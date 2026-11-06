@@ -1,0 +1,34 @@
+version: "3.8"
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: event_tracker_rabbitmq
+    ports:
+      - "5672:5672" # AMQP protocol
+      - "15672:15672" # Web Management UI
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  mongodb:
+    image: mongo:6.0
+    container_name: event_tracker_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+
+  redis:
+    image: redis:7-alpine
+    container_name: event_tracker_redis
+    ports:
+      - "6379:6379"
+
+volumes:
+  mongo_data:
