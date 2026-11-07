@@ -12,11 +12,13 @@ export class EventPayload {
     value: number;
 }
 
+// _id is a client-generated string (agentId|timestamp|name|value) so a
+// redelivered message (duplicate key 11000) is a no-op instead of a duplicate
+// row — see events.service.ts create()
 @Schema({ timestamps: true, collection: 'events' })
 export class Event {
-    // Indexed via the compound index below ({ agentId, timestamp })
     @Prop({ required: true })
-    agentId: string;
+    _id: string;
 
     @Prop({ required: true })
     timestamp: Date;
