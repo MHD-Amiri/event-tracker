@@ -20,8 +20,12 @@ async function bootstrap() {
         }),
     );
 
+    // Accept either variable so consumers and the ingest publisher can't end
+    // up on different brokers when only one is set (events.module reads RABBITMQ_URI)
     const rabbitMqUrl =
-        process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
+        process.env.RABBITMQ_URL ||
+        process.env.RABBITMQ_URI ||
+        'amqp://guest:guest@localhost:5672';
 
     // Caps the unacked-message buffer per consumer so a slow consumer can't
     // have the broker push an unbounded backlog into memory

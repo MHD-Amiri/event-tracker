@@ -17,7 +17,13 @@ import { EventsController } from './events.controller';
                 useFactory: (config: ConfigService) => ({
                     transport: Transport.RMQ,
                     options: {
-                        urls: [config.get<string>('RABBITMQ_URI', 'amqp://guest:guest@localhost:5672')],
+                        // Accept either variable, mirroring main.ts, so consumers
+                        // and this publisher can't land on different brokers
+                        urls: [
+                            config.get<string>('RABBITMQ_URI') ||
+                            config.get<string>('RABBITMQ_URL') ||
+                            'amqp://guest:guest@localhost:5672',
+                        ],
                         // Must match the evaluation consumer's queue (RMQ_EVALUATION_QUEUE)
                         queue: config.get<string>('RMQ_EVALUATION_QUEUE', 'events_evaluation_queue'),
                         queueOptions: {
