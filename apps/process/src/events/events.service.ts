@@ -22,16 +22,35 @@ export class EventsService {
         @Inject('INTERNAL_RABBITMQ_SERVICE') private readonly rmqClient: ClientProxy,
     ) { }
 
-    async create(dto: IncomingEventDto): Promise<EventDocument> {
+    async create(dto: IncomingEventDto): Promise<void> {
+        // Deterministic _id built from the message content: if the consumer
+        // nacks (e.g. the emit below failed) and RabbitMQ redelivers, the
+        // second save hits a duplicate key and is a no-op instead of a
+        // duplicate row
         const createdEvent = new this.eventModel({
+            _id: `${dto.agentId}|${dto.timestamp}|${dto.payload.name}|${dto.payload.value}`,
             agentId: dto.agentId,
             timestamp: new Date(dto.timestamp),
             payload: dto.payload,
         });
 
-        // 2. Fire and forget to internal evaluation queue
-        this.rmqClient.emit('evaluate_event', createdEvent);
+        try {
+            await createdEvent.save();
+        } catch (err) {
+            // 11000 = duplicate key — this message was already persisted on a
+            // previous delivery; safe to continue to the emit
+            if ((err as any)?.code !== 11000) throw err;
+        }
 
-        return createdEvent.save();
+        // Awaiting the emit: resolves once the message is written to the
+        // broker, rejects on failure so the consumer nacks and the whole
+        // message (persist + emit) is retried as a unit
+        await new Promise<void>((resolve, reject) => {
+            this.rmqClient.emit('evaluate_event', dto).subscribe({
+                next: () => resolve(),
+                error: reject,
+                complete: () => resolve(),
+            });
+        });
     }
 }

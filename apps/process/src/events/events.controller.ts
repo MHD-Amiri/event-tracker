@@ -16,7 +16,10 @@ export class EventsController {
             await this.eventsService.create(data);
             channel.ack(originalMsg);
         } catch (err) {
-            channel.nack(originalMsg, false, false);
+            this.logger.error('Failed to process event, requeueing for retry', err as Error);
+            // Requeue (true) so a transient failure (e.g. broker hiccup on the
+            // evaluation emit) redelivers instead of dropping the event
+            channel.nack(originalMsg, false, true);
         }
     }
 }
