@@ -1,6 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model } from 'mongoose';
+import { Model, Types } from 'mongoose';
 import { Rule, RuleDocument, RuleOperator } from './schemas/rule.schema';
 import { MatchedEvent, MatchedEventDocument } from './schemas/matched-event.schema';
 import { CreateRuleDto } from './dto/create-rule.dto';
@@ -64,11 +64,13 @@ export class RulesService {
 
         const matchesToInsert: Partial<MatchedEvent>[] = [];
 
-        for (const rule of rules) {
+        for (const rule of rules as (Rule & { _id: Types.ObjectId | string })[]) {
             if (rule.eventName === event.payload.name) {
                 if (this.checkCondition(event.payload.value, rule.operator, rule.value)) {
                     matchesToInsert.push({
-                        ruleId: (rule as any)._id,
+                        // _id is a plain string when rules come from the Redis cache
+                        // (JSON.stringify), so cast back to ObjectId to keep the ref intact
+                        ruleId: new Types.ObjectId(rule._id as string),
                         ruleName: rule.name,
                         agentId: event.agentId,
                         eventName: event.payload.name,
