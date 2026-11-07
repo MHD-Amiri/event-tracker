@@ -18,15 +18,25 @@ async function bootstrap() {
     const rabbitMqUrl =
         process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 
-    // Connect RabbitMQ microservice listener
+    // 1. Ingestion queue listener
     app.connectMicroservice<MicroserviceOptions>({
         transport: Transport.RMQ,
         options: {
             urls: [rabbitMqUrl],
             queue: 'events_queue',
-            queueOptions: {
-                durable: true,
-            },
+            queueOptions: { durable: true },
+            noAck: false
+        },
+    });
+
+    // 2. Rule evaluation queue listener
+    app.connectMicroservice<MicroserviceOptions>({
+        transport: Transport.RMQ,
+        options: {
+            urls: [rabbitMqUrl],
+            queue: 'events_evaluation_queue',
+            queueOptions: { durable: true },
+            noAck: false
         },
     });
 
@@ -35,6 +45,6 @@ async function bootstrap() {
     await app.listen(port);
 
     console.log(`🚀 Process HTTP server running on: http://localhost:${port}`);
-    console.log(`📡 Process Microservice listening to RabbitMQ queue 'events_queue'`);
+    console.log(`📡 Process listening to RabbitMQ: 'events_queue' & 'events_evaluation_queue'`);
 }
 bootstrap();

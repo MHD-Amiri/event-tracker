@@ -1,5 +1,5 @@
 import { Controller, Logger } from '@nestjs/common';
-import { EventPattern, Payload } from '@nestjs/microservices';
+import { EventPattern, Payload, Ctx, RmqContext } from '@nestjs/microservices';
 import { EventsService, IncomingEventDto } from './events.service';
 
 @Controller()
@@ -9,12 +9,14 @@ export class EventsController {
     constructor(private readonly eventsService: EventsService) { }
 
     @EventPattern('event_created')
-    async handleEventCreated(@Payload() data: IncomingEventDto) {
+    async handleEventCreated(@Payload() data: any, @Ctx() context: RmqContext) {
+        const channel = context.getChannelRef();
+        const originalMsg = context.getMessage();
         try {
             await this.eventsService.create(data);
-            // We log periodically or keep it minimal so we don't spam the console at 5 req/s
+            channel.ack(originalMsg);
         } catch (err) {
-            this.logger.error(`Failed to store event: ${err.message}`, err.stack);
+            channel.nack(originalMsg, false, false);
         }
     }
 }
