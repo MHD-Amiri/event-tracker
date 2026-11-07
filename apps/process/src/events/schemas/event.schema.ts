@@ -14,10 +14,11 @@ export class EventPayload {
 
 @Schema({ timestamps: true, collection: 'events' })
 export class Event {
-    @Prop({ required: true, index: true })
+    // Indexed via the compound index below ({ agentId, timestamp })
+    @Prop({ required: true })
     agentId: string;
 
-    @Prop({ required: true, index: true })
+    @Prop({ required: true })
     timestamp: Date;
 
     @Prop({ required: true, type: EventPayload })

@@ -23,7 +23,9 @@ export class RuleSnapshot {
 // into 'matchedevents'. snake_case matches the rest of the infra (events_queue, etc.)
 @Schema({ collection: 'matched_events', timestamps: true })
 export class MatchedEvent {
-    @Prop({ required: true, type: Types.ObjectId, ref: 'Rule', index: true })
+    // Indexed via the compound indexes below ({ ruleId, matchedAt } and
+    // { agentId, matchedAt })
+    @Prop({ required: true, type: Types.ObjectId, ref: 'Rule' })
     ruleId: Types.ObjectId;
 
     // Snapshot of the rule at match time (preserves reporting if the rule
@@ -31,7 +33,8 @@ export class MatchedEvent {
     @Prop({ type: RuleSnapshot, _id: false })
     ruleSnapshot: RuleSnapshot;
 
-    @Prop({ required: true, index: true })
+    // Indexed via the compound index below ({ agentId, matchedAt })
+    @Prop({ required: true })
     agentId: string;
 
     @Prop({ required: true })
@@ -40,7 +43,8 @@ export class MatchedEvent {
     @Prop({ required: true, type: Number })
     eventValue: number;
 
-    @Prop({ required: true, index: true })
+    // Suffix of the compound indexes above
+    @Prop({ required: true })
     matchedAt: Date;
 }
 
