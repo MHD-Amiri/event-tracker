@@ -1,16 +1,35 @@
 import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
 import { Document, Types } from 'mongoose';
+import { RuleOperator } from './rule.schema';
 
 export type MatchedEventDocument = MatchedEvent & Document;
 
-@Schema({ timestamps: true })
+@Schema()
+export class RuleSnapshot {
+    @Prop({ required: true })
+    name: string;
+
+    @Prop({ required: true })
+    eventName: string;
+
+    @Prop({ required: true, type: String, enum: Object.values(RuleOperator) })
+    operator: RuleOperator;
+
+    @Prop({ required: true, type: Number })
+    value: number;
+}
+
+// Explicit collection name: Mongoose would otherwise pluralize the class name
+// into 'matchedevents'. snake_case matches the rest of the infra (events_queue, etc.)
+@Schema({ collection: 'matched_events', timestamps: true })
 export class MatchedEvent {
     @Prop({ required: true, type: Types.ObjectId, ref: 'Rule', index: true })
     ruleId: Types.ObjectId;
 
-    // Snapshot rule name at the time of match (preserves reporting if rule changes)
-    @Prop({ required: true })
-    ruleName: string;
+    // Snapshot of the rule at match time (preserves reporting if the rule
+    // is later edited or deleted)
+    @Prop({ type: RuleSnapshot, _id: false })
+    ruleSnapshot: RuleSnapshot;
 
     @Prop({ required: true, index: true })
     agentId: string;

@@ -71,7 +71,12 @@ export class RulesService {
                         // _id is a plain string when rules come from the Redis cache
                         // (JSON.stringify), so cast back to ObjectId to keep the ref intact
                         ruleId: new Types.ObjectId(rule._id as string),
-                        ruleName: rule.name,
+                        ruleSnapshot: {
+                            name: rule.name,
+                            eventName: rule.eventName,
+                            operator: rule.operator,
+                            value: rule.value,
+                        },
                         agentId: event.agentId,
                         eventName: event.payload.name,
                         eventValue: event.payload.value,
