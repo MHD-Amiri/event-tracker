@@ -23,15 +23,23 @@ async function bootstrap() {
     const rabbitMqUrl =
         process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 
+    // Caps the unacked-message buffer per consumer so a slow consumer can't
+    // have the broker push an unbounded backlog into memory
+    const prefetchCount = Number(process.env.RMQ_PREFETCH_COUNT) || 500;
+
+    const ingestionQueue = process.env.RMQ_INGESTION_QUEUE || 'events_queue';
+    const evaluationQueue = process.env.RMQ_EVALUATION_QUEUE || 'events_evaluation_queue';
+
     if (role === 'both' || role === 'ingest') {
         // 1. Ingestion queue listener
         app.connectMicroservice<MicroserviceOptions>({
             transport: Transport.RMQ,
             options: {
                 urls: [rabbitMqUrl],
-                queue: 'events_queue',
+                queue: ingestionQueue,
                 queueOptions: { durable: true },
                 noAck: false,
+                prefetchCount,
             },
         });
     }
@@ -42,9 +50,10 @@ async function bootstrap() {
             transport: Transport.RMQ,
             options: {
                 urls: [rabbitMqUrl],
-                queue: 'events_evaluation_queue',
+                queue: evaluationQueue,
                 queueOptions: { durable: true },
                 noAck: false,
+                prefetchCount,
             },
         });
     }
@@ -55,9 +64,9 @@ async function bootstrap() {
         const port = process.env.PORT || 3000;
         await app.listen(port);
         console.log(`🚀 [role: ${role}] HTTP server running on: http://localhost:${port}`);
-        console.log(`📡 [role: ${role}] Listening to RabbitMQ: 'events_queue' & 'events_evaluation_queue'`);
+        console.log(`📡 [role: ${role}] Listening to RabbitMQ: '${ingestionQueue}' & '${evaluationQueue}'`);
     } else {
-        console.log(`📡 [role: ${role}] Pure evaluation worker — listening to RabbitMQ: 'events_evaluation_queue'`);
+        console.log(`📡 [role: ${role}] Pure evaluation worker — listening to RabbitMQ: '${evaluationQueue}'`);
     }
 }
 bootstrap();

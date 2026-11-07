@@ -2,12 +2,32 @@ import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
+const RULES_CACHE_KEY = 'active_rules';
+
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
     private client: Redis;
-    private readonly RULES_CACHE_KEY = 'active_rules';
+    private readonly RULES_CACHE_KEY = RULES_CACHE_KEY;
 
-    constructor(private configService: ConfigService) { }
+    private readonly rulesTtl: number;
+    private readonly rankingTtl: number;
+
+    constructor(private configService: ConfigService) {
+        this.rulesTtl = this.readTtl('REDIS_RULES_TTL_SEC', 3600);
+        this.rankingTtl = this.readTtl('REDIS_RANKING_TTL_SEC', 3600);
+    }
+
+    // Parse a TTL in seconds, guarding against a malformed value silently
+    // becoming NaN (Redis would then set the key without expiry)
+    private readTtl(key: string, fallback: number): number {
+        const raw = this.configService.get<string>(key);
+        const parsed = raw ? Number(raw) : fallback;
+        if (!Number.isFinite(parsed) || parsed <= 0) {
+            console.warn(`⚠️ Invalid ${key} "${raw}", falling back to ${fallback}s`);
+            return fallback;
+        }
+        return parsed;
+    }
 
     onModuleInit() {
         const host = this.configService.get<string>('REDIS_HOST', 'localhost');
@@ -33,8 +53,8 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     async setCachedRules(rules: any[]): Promise<void> {
-        // Cache for 1 hour or until invalidated
-        await this.client.set(this.RULES_CACHE_KEY, JSON.stringify(rules), 'EX', 3600);
+        // Cached until TTL expiry or explicit invalidation on rule changes
+        await this.client.set(this.RULES_CACHE_KEY, JSON.stringify(rules), 'EX', this.rulesTtl);
     }
 
     async invalidateRulesCache(): Promise<void> {
@@ -43,7 +63,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
     // --- Agent ranking cache ---
     // Cache-aside over the Mongo aggregation: Mongo is the source of truth,
-    // entries expire after 1 hour and the next request rebuilds them.
+    // entries expire after the configured TTL and the next request rebuilds them.
 
     async getRankingCache(ruleId: string): Promise<{ agentId: string; totalMatches: number }[] | null> {
         const data = await this.client.get(`ranking:${ruleId}`);
@@ -51,6 +71,6 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     async setRankingCache(ruleId: string, ranking: { agentId: string; totalMatches: number }[]): Promise<void> {
-        await this.client.set(`ranking:${ruleId}`, JSON.stringify(ranking), 'EX', 3600);
+        await this.client.set(`ranking:${ruleId}`, JSON.stringify(ranking), 'EX', this.rankingTtl);
     }
 }

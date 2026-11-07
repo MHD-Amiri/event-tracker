@@ -1,15 +1,25 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
+import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
 import { MatchedEvent, MatchedEventDocument } from '../rules/schemas/matched-event.schema';
 import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class ReportsService {
+    // Max report window in hours; requests spanning more are rejected
+    private readonly maxReportWindowHours: number;
+
     constructor(
         @InjectModel(MatchedEvent.name) private matchedEventModel: Model<MatchedEventDocument>,
         private readonly redisService: RedisService,
-    ) { }
+        configService: ConfigService,
+    ) {
+        const raw = configService.get<string>('REPORT_MAX_WINDOW_HOURS');
+        const parsed = raw ? Number(raw) : 24;
+        this.maxReportWindowHours =
+            Number.isFinite(parsed) && parsed > 0 ? parsed : 24;
+    }
 
     // API 1: Timestamps per agent for a rule within a max 1-day window
     async getAgentTimestamps(ruleId: string, start: string, end: string) {
@@ -25,8 +35,8 @@ export class ReportsService {
         }
 
         const diffHours = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
-        if (diffHours > 24 || diffHours < 0) {
-            throw new BadRequestException('Time window must be at most 24 hours.');
+        if (diffHours > this.maxReportWindowHours || diffHours < 0) {
+            throw new BadRequestException(`Time window must be at most ${this.maxReportWindowHours} hours.`);
         }
 
         const objectId = new Types.ObjectId(ruleId);

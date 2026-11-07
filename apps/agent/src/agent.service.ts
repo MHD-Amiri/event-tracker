@@ -12,6 +12,9 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
     private readonly agentId = process.env.AGENT_ID || 'agent-default-1';
     private readonly rabbitMqUrl = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
 
+    // Milliseconds between events (default 200 = ~5 events/sec)
+    private readonly emitIntervalMs = Number(process.env.AGENT_EMIT_INTERVAL_MS) || 200;
+
     // Realistic sensor names for matching rules later
     private readonly metricNames = [
         'temperature',
@@ -21,12 +24,15 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
         'cpu_load',
     ];
 
+    // Ingestion queue — must match the process ingest consumer's queue (RMQ_INGESTION_QUEUE)
+    private readonly ingestionQueue = process.env.RMQ_INGESTION_QUEUE || 'events_queue';
+
     async onModuleInit() {
         this.client = ClientProxyFactory.create({
             transport: Transport.RMQ,
             options: {
                 urls: [this.rabbitMqUrl],
-                queue: 'events_queue',
+                queue: this.ingestionQueue,
                 queueOptions: {
                     durable: true,
                 },
@@ -46,10 +52,9 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
     }
 
     private startEventEmitting() {
-        // ~5 times per second = every 200 ms
         this.intervalId = setInterval(() => {
             this.generateAndSendEvent();
-        }, 200);
+        }, this.emitIntervalMs);
     }
 
     private generateAndSendEvent() {

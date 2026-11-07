@@ -18,7 +18,8 @@ import { EventsController } from './events.controller';
                     transport: Transport.RMQ,
                     options: {
                         urls: [config.get<string>('RABBITMQ_URI', 'amqp://guest:guest@localhost:5672')],
-                        queue: 'events_evaluation_queue',
+                        // Must match the evaluation consumer's queue (RMQ_EVALUATION_QUEUE)
+                        queue: config.get<string>('RMQ_EVALUATION_QUEUE', 'events_evaluation_queue'),
                         queueOptions: {
                             durable: true,
                         },
