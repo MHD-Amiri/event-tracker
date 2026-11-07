@@ -40,4 +40,17 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     async invalidateRulesCache(): Promise<void> {
         await this.client.del(this.RULES_CACHE_KEY);
     }
+
+    // --- Agent ranking cache ---
+    // Cache-aside over the Mongo aggregation: Mongo is the source of truth,
+    // entries expire after 1 hour and the next request rebuilds them.
+
+    async getRankingCache(ruleId: string): Promise<{ agentId: string; totalMatches: number }[] | null> {
+        const data = await this.client.get(`ranking:${ruleId}`);
+        return data ? JSON.parse(data) : null;
+    }
+
+    async setRankingCache(ruleId: string, ranking: { agentId: string; totalMatches: number }[]): Promise<void> {
+        await this.client.set(`ranking:${ruleId}`, JSON.stringify(ranking), 'EX', 3600);
+    }
 }

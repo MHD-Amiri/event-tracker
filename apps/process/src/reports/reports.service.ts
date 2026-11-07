@@ -2,11 +2,13 @@ import { Injectable, BadRequestException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model, Types } from 'mongoose';
 import { MatchedEvent, MatchedEventDocument } from '../rules/schemas/matched-event.schema';
+import { RedisService } from '../redis/redis.service';
 
 @Injectable()
 export class ReportsService {
     constructor(
         @InjectModel(MatchedEvent.name) private matchedEventModel: Model<MatchedEventDocument>,
+        private readonly redisService: RedisService,
     ) { }
 
     // API 1: Timestamps per agent for a rule within a max 1-day window
@@ -58,10 +60,15 @@ export class ReportsService {
     }
 
     // API 2: Agent ranking by match count for a rule (all-time)
+    // Cache-aside: Mongo is the source of truth, Redis caches the result for
+    // 1 hour so repeated requests skip the full-history aggregation
     async getAgentRanking(ruleId: string) {
         if (!Types.ObjectId.isValid(ruleId)) {
             throw new BadRequestException('Invalid ruleId format.');
         }
+
+        const cached = await this.redisService.getRankingCache(ruleId);
+        if (cached) return cached;
 
         const objectId = new Types.ObjectId(ruleId);
 
@@ -89,6 +96,7 @@ export class ReportsService {
             },
         ]);
 
+        await this.redisService.setRankingCache(ruleId, results);
         return results;
     }
 }
