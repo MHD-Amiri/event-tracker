@@ -1,1 +1,197 @@
 # event-tracker
+
+A distributed event-tracking pipeline: simulated agents stream sensor events over RabbitMQ, a NestJS **process** service persists them to MongoDB, evaluates user-defined rules, and exposes reporting APIs — with Redis caching the active rule set and report results.
+
+```
+┌────────┐   events_queue    ┌─────────────┐  events_evaluation_queue  ┌─────────────┐
+│ Agent  │ ──── (AMQP) ────▶ │   Process    │ ──── (AMQP) ────────────▶ │   Process    │
+│ (5/s)  │                   │  (ingest)    │                           │ (evaluate)  │
+└────────┘                   │  + HTTP API  │                           │  matches →  │
+                             └──────┬──────┘                           │  MongoDB    │
+                                    │ save                             └─────────────┘
+                                    ▼
+                               MongoDB                                  Redis
+                                                                    (rules + ranking cache)
+```
+
+## Architecture
+
+| Component | Role |
+|---|---|
+| **Agent** (`apps/agent`) | Standalone worker emitting simulated sensor events (~5/sec) to `events_queue` |
+| **Process** (`apps/process`) | NestJS monolith: ingestion consumer, rule-evaluation consumer, REST API. Deployable as one process or split by role (see [Scaling](#scaling--deployment-roles)) |
+| **RabbitMQ** | Two durable queues — decouples ingestion from evaluation, buffers failures |
+| **MongoDB** | Source of truth: `events`, `rules`, `matched_events` collections |
+| **Redis** | 1-hour TTL caches: active rules set, per-rule agent ranking |
+
+### Message flow
+
+1. Agent publishes `event_created` → `events_queue`
+2. Process (ingest) saves the event to MongoDB with a **deterministic id** (`agentId|timestamp|name|value`), then emits `evaluate_event`
+3. Process (evaluate) loads active rules (Redis-cached), inserts `matched_events` for every matching rule — with a full **rule snapshot** embedded, so reports stay accurate even if the rule is edited or deleted later
+4. If any step fails, the message is **nacked and requeued**; the deterministic id makes redelivery idempotent (duplicate key → no-op)
+
+## Prerequisites
+
+- Node 18+ (via nvm), npm
+- Docker (for RabbitMQ, MongoDB, Redis)
+
+## Quick start
+
+```bash
+# 1. Start infrastructure
+docker compose up -d
+
+# 2. Install dependencies
+npm install
+
+# 3. Start the process service (both consumers + HTTP API on :3000)
+npm run start:process
+
+# 4. In another terminal, start a sensor agent
+npm run start:agent
+```
+
+Configuration is env-driven with sensible localhost defaults — no `.env` needed for local dev:
+
+| Variable | Default | Used by |
+|---|---|---|
+| `RABBITMQ_URL` / `RABBITMQ_URI` | `amqp://guest:guest@localhost:5672` | agent + process |
+| `MONGO_URI` | `mongodb://localhost:27017/event_tracker` | process |
+| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | process |
+| `PORT` | `3000` | process HTTP |
+| `PROCESS_ROLE` | `both` | process deployment role |
+| `AGENT_ID` | `agent-default-1` | agent identifier |
+
+## Walkthrough: from zero to a report
+
+With both services running:
+
+**1. Create a rule** — alert when temperature exceeds 80:
+
+```bash
+curl -X POST http://localhost:3000/rules \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "name": "High temperature",
+    "eventName": "temperature",
+    "operator": ">",
+    "value": 80
+  }'
+```
+
+```json
+{
+  "_id": "682f9f2a1c9d3e4f5a6b7c8d",
+  "name": "High temperature",
+  "eventName": "temperature",
+  "operator": ">",
+  "value": 80,
+  "isActive": true
+}
+```
+
+Note the `_id` — it's the `ruleId` used in the report APIs. Rules are cached in Redis for up to 1 hour, but **every create/update/delete invalidates the cache immediately**, so changes take effect right away.
+
+**2. Verify the agent's events** are flowing (agent emits `temperature` among 5 metric types, values 10–120, so a rule at 80 trips regularly):
+
+```bash
+# Event timestamps for an agent — expects ISO 8601 start/end, max 24h window
+curl 'http://localhost:3000/reports/rules/682f9f2a1c9d3e4f5a6b7c8d/timestamps?start=2026-11-07T00:00:00Z&end=2026-11-08T00:00:00Z'
+```
+
+**3. Check matches are being recorded** — the evaluation consumer writes one `matched_events` doc per (rule, event) match:
+
+```bash
+# Agent ranking for a rule — all-time match counts, highest first
+curl http://localhost:3000/reports/rules/682f9f2a1c9d3e4f5a6b7c8d/ranking
+```
+
+```json
+[
+  { "agentId": "agent-default-1", "totalMatches": 342 }
+]
+```
+
+The ranking endpoint is cache-aside: first call aggregates from Mongo (the source of truth), then serves from Redis for 1 hour. Reports may lag live data by up to that TTL — by design, see [Design decisions](#design-decisions--best-practices).
+
+**4. Manage rules**:
+
+```bash
+curl http://localhost:3000/rules                 # list all
+curl http://localhost:3000/rules/<id>            # get one
+curl -X PUT http://localhost:3000/rules/<id> \
+  -H 'Content-Type: application/json' \
+  -d '{"value": 50}'                             # update (cache invalidated)
+curl -X DELETE http://localhost:3000/rules/<id>  # delete (cache invalidated)
+```
+
+Run multiple agents to make the ranking interesting: `AGENT_ID=agent-2 npm run start:agent`.
+
+## API reference
+
+### Rules — `/rules`
+
+| Method | Path | Body | Notes |
+|---|---|---|---|
+| `POST` | `/rules` | `CreateRuleDto` | |
+| `GET` | `/rules` | — | |
+| `GET` | `/rules/:id` | — | 404 if unknown |
+| `PUT` | `/rules/:id` | `UpdateRuleDto` | partial update |
+| `DELETE` | `/rules/:id` | — | `{ success: true }` |
+
+`operator` is one of `==`, `!=`, `>`, `>=`, `<`, `<=`. All bodies are validated (whitelist + strict DTO — unknown fields are rejected with 400).
+
+### Reports — `/reports`
+
+| Method | Path | Query | Notes |
+|---|---|---|---|
+| `GET` | `/reports/rules/:ruleId/timestamps` | `start`, `end` (ISO 8601) | Window must be ≤ 24h, `start ≤ end`. Groups matched timestamps per agent |
+| `GET` | `/reports/rules/:ruleId/ranking` | — | All-time per-agent match counts, descending. Redis-cached 1h |
+
+Both validate `ruleId` (400 on malformed ObjectId) and return 400 with a clear message on invalid input.
+
+## Scaling & deployment roles
+
+The same process codebase deploys in three topologies via `PROCESS_ROLE`:
+
+| Role | Consumes | Serves | Use when |
+|---|---|---|---|
+| `both` (default) | both queues | HTTP | local dev, single instance |
+| `ingest` | `events_queue` | HTTP | scale ingestion + API tier |
+| `evaluate` | `events_evaluation_queue` | — (no HTTP port) | scale evaluation workers independently |
+
+```bash
+npm run start:process:ingest       # PROCESS_ROLE=ingest
+npm run start:process:evaluate     # PROCESS_ROLE=evaluate
+```
+
+RabbitMQ round-robins each queue across all its consumers, so scaling the evaluation tier is just launching more `evaluate` processes — no code changes. This is the payoff of the two-queue split: ingestion keeps flowing while evaluation is slow or scaled down.
+
+## Design decisions & best practices
+
+**Idempotent consumption.** Every event is persisted under a deterministic id (`agentId|timestamp|name|value`). If the broker redelivers a message after a partial failure, the duplicate insert is a no-op (duplicate-key 11000 is caught and ignored), so retry-as-a-unit is safe. This is what makes nack-with-requeue viable without duplicate rows.
+
+**Broker confirms on the forward hop.** The `evaluate_event` emit is awaited, not fire-and-forget: the handler only acks the original message once the next stage has accepted it. A dropped broker connection fails the handler → nack → redelivery.
+
+**Mongo is the source of truth; Redis is disposable.** Both caches (rules, ranking) are rebuild-on-miss. Flushing Redis degrades performance, never correctness. Report freshness is bounded by the 1-hour TTL; rule changes are immediate because mutations invalidate on write.
+
+**Queue-per-stage, role-gated consumers.** `events_queue` and `events_evaluation_queue` isolate ingestion from evaluation latency. Prefetch is capped (`prefetchCount: 500`) so a slow consumer can't have the broker push an unbounded unacked buffer into memory.
+
+**Rule snapshots at match time.** `matched_events.ruleSnapshot` embeds the rule's name/operator/value as they were when it matched. Editing or deleting a rule later doesn't falsify history — reports show what agents were actually measured against.
+
+**Collection naming.** `matched_events` (and `events`) are declared explicitly in the schema — Mongoose would otherwise pluralize the class name into `matchedevents`.
+
+**Known trade-offs / future work:**
+- A poison message (one that always fails) requeues forever — add a retry-count header + dead-letter queue before relying on this in production
+- The dedup id assumes `agentId|timestamp|name|value` uniquely identifies a real event; same-timestamp identical events from one agent collapse
+- Report queries are unauthenticated; add auth before exposing beyond localhost
+
+## Development
+
+```bash
+npx tsc -p apps/process/tsconfig.app.json --noEmit   # type check process
+npx tsc -p apps/agent/tsconfig.app.json --noEmit     # type check agent
+```
+
+Monitoring: RabbitMQ management UI at http://localhost:15672 (guest/guest) — watch queue depth on `events_evaluation_queue` to see evaluation backpressure in real time.
