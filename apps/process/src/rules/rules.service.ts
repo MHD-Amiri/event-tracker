@@ -1,8 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { InjectModel } from '@nestjs/mongoose';
-import { Model, Types } from 'mongoose';
-import { Rule, RuleDocument, RuleOperator } from './schemas/rule.schema';
-import { MatchedEvent, MatchedEventDocument } from './schemas/matched-event.schema';
+import { Model } from 'mongoose';
+import { Rule, RuleDocument } from './schemas/rule.schema';
 import { CreateRuleDto } from './dto/create-rule.dto';
 import { UpdateRuleDto } from './dto/update-rule.dto';
 import { RedisService } from '../redis/redis.service';
@@ -11,7 +10,6 @@ import { RedisService } from '../redis/redis.service';
 export class RulesService {
     constructor(
         @InjectModel(Rule.name) private ruleModel: Model<RuleDocument>,
-        @InjectModel(MatchedEvent.name) private matchedEventModel: Model<MatchedEventDocument>,
         private readonly redisService: RedisService,
     ) { }
 
@@ -47,7 +45,9 @@ export class RulesService {
         return { success: true };
     }
 
-    // --- Engine / Evaluation ---
+    // --- Active-rule source ---
+    // The evaluation pipeline (pipeline.service.ts) reads rules through
+    // this interface; administration writes above invalidate what it reads.
 
     async getActiveRules(): Promise<Rule[]> {
         const cached = await this.redisService.getCachedRules();
@@ -56,51 +56,5 @@ export class RulesService {
         const activeRules = await this.ruleModel.find({ isActive: true }).lean();
         await this.redisService.setCachedRules(activeRules);
         return activeRules;
-    }
-
-    async evaluateEvent(event: { agentId: string; payload: { name: string; value: number }; timestamp?: Date }) {
-        const rules = await this.getActiveRules();
-        if (!rules || rules.length === 0) return;
-
-        const matchesToInsert: Partial<MatchedEvent>[] = [];
-
-        for (const rule of rules as (Rule & { _id: Types.ObjectId | string })[]) {
-            if (rule.eventName === event.payload.name) {
-                if (this.checkCondition(event.payload.value, rule.operator, rule.value)) {
-                    matchesToInsert.push({
-                        // _id is a plain string when rules come from the Redis cache
-                        // (JSON.stringify), so cast back to ObjectId to keep the ref intact
-                        ruleId: new Types.ObjectId(rule._id as string),
-                        ruleSnapshot: {
-                            name: rule.name,
-                            eventName: rule.eventName,
-                            operator: rule.operator,
-                            value: rule.value,
-                        },
-                        agentId: event.agentId,
-                        eventName: event.payload.name,
-                        eventValue: event.payload.value,
-                        matchedAt: event.timestamp ? new Date(event.timestamp) : new Date(),
-                    });
-                }
-            }
-        }
-
-        if (matchesToInsert.length > 0) {
-            await this.matchedEventModel.insertMany(matchesToInsert);
-            console.log(`🎯 Stored ${matchesToInsert.length} rule match(es) for agent ${event.agentId}`);
-        }
-    }
-
-    private checkCondition(val: number, op: RuleOperator, target: number): boolean {
-        switch (op) {
-            case RuleOperator.EQUALS: return val === target;
-            case RuleOperator.NOT_EQUALS: return val !== target;
-            case RuleOperator.GREATER_THAN: return val > target;
-            case RuleOperator.GREATER_THAN_OR_EQUAL: return val >= target;
-            case RuleOperator.LESS_THAN: return val < target;
-            case RuleOperator.LESS_THAN_OR_EQUAL: return val <= target;
-            default: return false;
-        }
     }
 }

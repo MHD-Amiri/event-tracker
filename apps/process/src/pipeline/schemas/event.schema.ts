@@ -12,13 +12,28 @@ export class EventPayload {
     value: number;
 }
 
+// The event as it crosses the RMQ seam, in the shape the agent publishes it.
+// Kept next to the persisted schema because they differ in exactly one way:
+// the agent's ISO timestamp becomes a Date here.
+export interface SensorEventMessage {
+    agentId: string;
+    timestamp: string; // ISO 8601
+    payload: {
+        name: string;
+        value: number;
+    };
+}
+
 // _id is a client-generated string (agentId|timestamp|name|value) so a
 // redelivered message (duplicate key 11000) is a no-op instead of a duplicate
-// row — see events.service.ts create()
+// row — see pipeline.service.ts ingest()
 @Schema({ timestamps: true, collection: 'events' })
 export class Event {
     @Prop({ required: true })
     _id: string;
+
+    @Prop({ required: true })
+    agentId: string;
 
     @Prop({ required: true })
     timestamp: Date;
