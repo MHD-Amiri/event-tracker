@@ -56,7 +56,7 @@ Configuration is env-driven with sensible localhost defaults — no `.env` neede
 
 | Variable | Default | Used by |
 |---|---|---|
-| `RABBITMQ_URL` / `RABBITMQ_URI` | `amqp://guest:guest@localhost:5672` | agent + process |
+| `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672` | agent + process (`RABBITMQ_URI` is a deprecated alias) |
 | `MONGO_URI` | `mongodb://localhost:27017/event_tracker` | process |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | process |
 | `PORT` | `3000` | process HTTP |

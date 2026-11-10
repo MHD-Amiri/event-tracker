@@ -11,6 +11,10 @@
     "rootDir": ".",
     "outDir": "./dist",
     "baseUrl": "./",
+    "paths": {
+      "@app/rmq": ["libs/rmq/src"],
+      "@app/rmq/*": ["libs/rmq/src/*"]
+    },
     "incremental": true,
     "skipLibCheck": true,
     "strictNullChecks": false,

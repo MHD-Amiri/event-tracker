@@ -1,6 +1,8 @@
 import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/common';
-import { ClientProxy, ClientProxyFactory, Transport } from '@nestjs/microservices';
+import { ConfigService } from '@nestjs/config';
+import { ClientProxy } from '@nestjs/microservices';
 import { faker } from '@faker-js/faker';
+import { clientProxy, queueNames } from '@app/rmq';
 import { SensorEventMessage } from './sensor-event.interface';
 
 @Injectable()
@@ -9,11 +11,10 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
     private client: ClientProxy;
     private intervalId: NodeJS.Timeout;
 
-    private readonly agentId = process.env.AGENT_ID || 'agent-default-1';
-    private readonly rabbitMqUrl = process.env.RABBITMQ_URL || 'amqp://guest:guest@localhost:5672';
+    private readonly agentId: string;
 
     // Milliseconds between events (default 200 = ~5 events/sec)
-    private readonly emitIntervalMs = Number(process.env.AGENT_EMIT_INTERVAL_MS) || 200;
+    private readonly emitIntervalMs: number;
 
     // Realistic sensor names for matching rules later
     private readonly metricNames = [
@@ -24,20 +25,16 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
         'cpu_load',
     ];
 
-    // Ingestion queue — must match the process ingest consumer's queue (RMQ_INGESTION_QUEUE)
-    private readonly ingestionQueue = process.env.RMQ_INGESTION_QUEUE || 'events_queue';
+    constructor(private readonly config: ConfigService) {
+        this.agentId = this.config.get<string>('AGENT_ID', 'agent-default-1');
+        this.emitIntervalMs = Number(this.config.get<string>('AGENT_EMIT_INTERVAL_MS')) || 200;
+    }
 
     async onModuleInit() {
-        this.client = ClientProxyFactory.create({
-            transport: Transport.RMQ,
-            options: {
-                urls: [this.rabbitMqUrl],
-                queue: this.ingestionQueue,
-                queueOptions: {
-                    durable: true,
-                },
-            },
-        });
+        // Broker URL, ingestion queue name, and durable-queue options all come
+        // from the shared rmq module, so the agent can't connect to a
+        // different broker or queue than the process service
+        this.client = clientProxy(queueNames(this.config).ingestion, this.config);
 
         await this.client.connect();
         this.logger.log(`Connected to RabbitMQ. Agent ID: ${this.agentId}`);
