@@ -4,5 +4,6 @@
     "declaration": false,
     "outDir": "../../dist/apps/process"
   },
-  "include": ["src/**/*"]
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.spec.ts"]
 }
