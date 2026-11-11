@@ -1,7 +1,10 @@
 /** @type {import('jest').Config} */
 module.exports = {
     rootDir: '.',
-    roots: ['<rootDir>/apps'],
+    roots: ['<rootDir>/apps', '<rootDir>/libs'],
+    moduleNameMapper: {
+        '^@app/rmq$': '<rootDir>/libs/rmq/src/index.ts',
+    },
     testMatch: ['**/*.spec.ts'],
     transform: {
         '^.+\\.tsx?$': ['ts-jest', {
