@@ -54,8 +54,8 @@ export class MatchedEvent {
 
 export const MatchedEventSchema = SchemaFactory.createForClass(MatchedEvent);
 
-// Compound index for Rule Reporting query (RuleId + matchedAt window)
-MatchedEventSchema.index({ ruleId: 1, matchedAt: -1 });
+// Supports API A's bounded ascending keyset page. eventId is unique within a rule.
+MatchedEventSchema.index({ ruleId: 1, matchedAt: 1, eventId: 1 });
 // Compound index for Agent Ranking query
 MatchedEventSchema.index({ agentId: 1, matchedAt: -1 });
 // Partial filter keeps legacy rows without eventId indexable during rollout.

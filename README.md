@@ -126,8 +126,8 @@ Note the `_id` — it's the `ruleId` used in the report APIs. Rules are cached i
 **2. Verify the agent's events** are flowing (agent emits `temperature` among 5 metric types, values 10–120, so a rule at 80 trips regularly):
 
 ```bash
-# Event timestamps for an agent — expects ISO 8601 start/end, max 24h window
-curl 'http://localhost:3000/reports/rules/682f9f2a1c9d3e4f5a6b7c8d/timestamps?start=2026-11-07T00:00:00Z&end=2026-11-08T00:00:00Z'
+# Event timestamps per agent — ISO 8601 range, max 24h; limit defaults to 100 and is capped at 500
+curl 'http://localhost:3000/reports/rules/682f9f2a1c9d3e4f5a6b7c8d/timestamps?start=2026-11-07T00:00:00Z&end=2026-11-08T00:00:00Z&limit=100'
 ```
 
 **3. Check matches are being recorded** — the evaluation consumer writes one `matched_events` doc per (rule, event) match:
@@ -176,7 +176,7 @@ Run multiple agents to make the ranking interesting: `AGENT_ID=agent-2 npm run s
 
 | Method | Path | Query | Notes |
 |---|---|---|---|
-| `GET` | `/reports/rules/:ruleId/timestamps` | `start`, `end` (ISO 8601) | Window must be ≤ 24h, `start ≤ end`. Groups matched timestamps per agent |
+| `GET` | `/reports/rules/:ruleId/timestamps` | `start`, `end` (ISO 8601), optional `limit` (1–500, default 100), optional opaque `cursor` | Window must be ≤ 24h, `start ≤ end`. Returns `{ items: [{ agentId, count, matchedAt }], limit, nextCursor }`; counts/timestamps are for that page. Pass `nextCursor` to fetch the next stable page. |
 | `GET` | `/reports/rules/:ruleId/ranking` | — | All-time per-agent match counts from the durable projection, descending |
 
 Both validate `ruleId` (400 on malformed ObjectId) and return 400 with a clear message on invalid input.

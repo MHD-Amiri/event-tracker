@@ -11,8 +11,10 @@ export class ReportsController {
         @Param('ruleId') ruleId: string,
         @Query('start') start: string,
         @Query('end') end: string,
+        @Query('limit') limit?: string,
+        @Query('cursor') cursor?: string,
     ) {
-        return this.reportsService.getAgentTimestamps(ruleId, start, end);
+        return this.reportsService.getAgentTimestamps(ruleId, start, end, limit, cursor);
     }
 
     // GET /reports/rules/:ruleId/ranking
