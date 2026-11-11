@@ -32,4 +32,4 @@ const mongoLogger = new Logger('MongoDB');
         ReportsModule,
     ],
 })
-export class AppModule { }
+export class AppModule {}

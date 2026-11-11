@@ -21,7 +21,8 @@ function describeStartupError(error: unknown, seen = new WeakSet<object>()): str
             .filter((key) => typeof details[key] === 'string' || typeof details[key] === 'number')
             .map((key) => `${key}=${details[key]}`);
         for (const key of ['err', 'error', 'cause']) {
-            if (details[key] !== undefined) readable.push(`${key}=${describeStartupError(details[key], seen)}`);
+            if (details[key] !== undefined)
+                readable.push(`${key}=${describeStartupError(details[key], seen)}`);
         }
         if (readable.length) return readable.join('; ');
     }
@@ -38,7 +39,7 @@ export async function bootstrap() {
     } catch (error) {
         logger.error(
             `Agent startup failed: ${describeStartupError(error)}. ` +
-            'Check RabbitMQ availability and the RABBITMQ_URL credentials.',
+                'Check RabbitMQ availability and the RABBITMQ_URL credentials.',
         );
         throw error;
     }

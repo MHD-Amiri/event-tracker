@@ -91,7 +91,13 @@ describe('RedisService', () => {
             await customService.setCachedRules(rules, '0');
 
             expect(mockRedisClient.eval).toHaveBeenCalledWith(
-                expect.any(String), 2, 'active_rules:version', 'active_rules', '0', JSON.stringify(rules), '3600',
+                expect.any(String),
+                2,
+                'active_rules:version',
+                'active_rules',
+                '0',
+                JSON.stringify(rules),
+                '3600',
             );
             customService.onModuleDestroy();
         },
@@ -123,17 +129,19 @@ describe('RedisService', () => {
 
     it('fails module startup with the target when Redis cannot become ready', async () => {
         mockRedisClient.connect.mockRejectedValueOnce(new Error('ECONNREFUSED'));
-        const config = { get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue) } as unknown as ConfigService;
+        const config = {
+            get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue),
+        } as unknown as ConfigService;
         const unavailableService = new RedisService(config);
 
-        await expect(unavailableService.onModuleInit())
-            .rejects.toThrow('Redis startup check failed for localhost:6379: ECONNREFUSED');
+        await expect(unavailableService.onModuleInit()).rejects.toThrow(
+            'Redis startup check failed for localhost:6379: ECONNREFUSED',
+        );
         expect(mockRedisClient.disconnect).toHaveBeenCalled();
     });
 
     it('surfaces invalid cached JSON and Redis command failures', async () => {
         mockRedisClient.get.mockResolvedValueOnce('{not-json');
         await expect(service.getCachedRules()).rejects.toThrow(SyntaxError);
-
     });
 });

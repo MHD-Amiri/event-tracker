@@ -36,7 +36,7 @@ describe('process bootstrap deployment roles', () => {
         process.env.RABBITMQ_URL = 'amqp://test-broker';
         process.env.RMQ_INGESTION_QUEUE = 'test-ingestion';
         process.env.RMQ_EVALUATION_QUEUE = 'test-evaluation';
-        jest.spyOn(console, 'log').mockImplementation(() => undefined);
+        jest.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
 
         app = {
             enableShutdownHooks: jest.fn(),
@@ -73,8 +73,12 @@ describe('process bootstrap deployment roles', () => {
         });
         expect(app.startAllMicroservices).toHaveBeenCalledTimes(1);
         expect(app.listen).toHaveBeenCalledWith('4317');
-        expect(app.startAllMicroservices.mock.invocationCallOrder[0])
-            .toBeLessThan(app.listen.mock.invocationCallOrder[0]);
+        expect(Logger.prototype.log).toHaveBeenCalledWith(
+            'role=both HTTP server listening on port=4317',
+        );
+        expect(app.startAllMicroservices.mock.invocationCallOrder[0]).toBeLessThan(
+            app.listen.mock.invocationCallOrder[0],
+        );
     });
 
     it('starts ingestion and HTTP, but not evaluation, for the ingest role', async () => {
@@ -99,6 +103,9 @@ describe('process bootstrap deployment roles', () => {
         });
         expect(app.startAllMicroservices).toHaveBeenCalledTimes(1);
         expect(app.listen).not.toHaveBeenCalled();
+        expect(Logger.prototype.log).toHaveBeenCalledWith(
+            'role=evaluate evaluation worker listening to RabbitMQ queue=test-evaluation',
+        );
     });
 
     it('defaults to the both role when no role is configured', async () => {

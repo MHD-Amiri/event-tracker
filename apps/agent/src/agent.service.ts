@@ -22,13 +22,7 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
     private readonly emitIntervalMs: number;
 
     // Realistic sensor names for matching rules later
-    private readonly metricNames = [
-        'temperature',
-        'pressure',
-        'humidity',
-        'voltage',
-        'cpu_load',
-    ];
+    private readonly metricNames = ['temperature', 'pressure', 'humidity', 'voltage', 'cpu_load'];
 
     constructor(private readonly config: ConfigService) {
         this.agentId = this.config.get<string>('AGENT_ID', 'agent-default-1');
@@ -64,7 +58,9 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
                 this.inFlightPublish,
                 new Promise<void>((resolve) => {
                     timeout = setTimeout(() => {
-                        this.logger.warn('Timed out waiting for in-flight RabbitMQ publish during shutdown.');
+                        this.logger.warn(
+                            'Timed out waiting for in-flight RabbitMQ publish during shutdown.',
+                        );
                         resolve();
                     }, 5000);
                 }),
@@ -104,7 +100,9 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
 
         // Emit event asynchronously to RabbitMQ queue with pattern 'event_created'
         try {
-            await lastValueFrom(this.client.emit('event_created', message), { defaultValue: undefined });
+            await lastValueFrom(this.client.emit('event_created', message), {
+                defaultValue: undefined,
+            });
         } catch (error) {
             const detail = error instanceof Error ? error.message : String(error);
             this.logger.error(`RabbitMQ publish failed for eventId=${message.eventId}: ${detail}`);

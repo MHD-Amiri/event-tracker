@@ -21,17 +21,20 @@ describe('PipelineController', () => {
     };
     const originalMessage = { content: Buffer.from('sensor event') };
 
-    const createContext = () => ({
-        getChannelRef: () => ({ ack, nack }),
-        getMessage: () => originalMessage,
-    }) as unknown as RmqContext;
+    const createContext = () =>
+        ({
+            getChannelRef: () => ({ ack, nack }),
+            getMessage: () => originalMessage,
+        }) as unknown as RmqContext;
 
     beforeEach(() => {
         ingest = jest.fn().mockResolvedValue(undefined);
         evaluate = jest.fn().mockResolvedValue(undefined);
         ack = jest.fn();
         nack = jest.fn();
-        handleFailure = jest.fn(async (context: RmqContext) => context.getChannelRef().ack(context.getMessage()));
+        handleFailure = jest.fn(async (context: RmqContext) =>
+            context.getChannelRef().ack(context.getMessage()),
+        );
         jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
         controller = new PipelineController(
             { ingest, evaluate } as unknown as PipelineService,
@@ -61,7 +64,12 @@ describe('PipelineController', () => {
 
             expect(ingest).toHaveBeenCalledTimes(1);
             expect(ingest).toHaveBeenCalledWith(sensorEvent);
-            expect(handleFailure).toHaveBeenCalledWith(expect.anything(), 'events_queue', expect.any(Error), false);
+            expect(handleFailure).toHaveBeenCalledWith(
+                expect.anything(),
+                'events_queue',
+                expect.any(Error),
+                false,
+            );
             expect(ack).toHaveBeenCalledWith(originalMessage);
             expect(nack).not.toHaveBeenCalled();
         });
@@ -84,16 +92,29 @@ describe('PipelineController', () => {
 
             expect(evaluate).toHaveBeenCalledTimes(1);
             expect(evaluate).toHaveBeenCalledWith(sensorEvent);
-            expect(handleFailure).toHaveBeenCalledWith(expect.anything(), 'events_evaluation_queue', expect.any(Error), false);
+            expect(handleFailure).toHaveBeenCalledWith(
+                expect.anything(),
+                'events_evaluation_queue',
+                expect.any(Error),
+                false,
+            );
             expect(ack).toHaveBeenCalledWith(originalMessage);
             expect(nack).not.toHaveBeenCalled();
         });
 
         it('routes invalid event input directly to the dead-letter queue', async () => {
-            await controller.handleEvaluation({ ...sensorEvent, payload: null } as any, createContext());
+            await controller.handleEvaluation(
+                { ...sensorEvent, payload: null } as any,
+                createContext(),
+            );
 
             expect(evaluate).not.toHaveBeenCalled();
-            expect(handleFailure).toHaveBeenCalledWith(expect.anything(), 'events_evaluation_queue', expect.any(Error), true);
+            expect(handleFailure).toHaveBeenCalledWith(
+                expect.anything(),
+                'events_evaluation_queue',
+                expect.any(Error),
+                true,
+            );
         });
     });
 });

@@ -77,9 +77,15 @@ describe('RmqRetryService', () => {
     it('dead-letters a transient message after the retry limit is reached', async () => {
         message.properties.headers['x-event-tracker-retry-count'] = 3;
 
-        await service.handleFailure(context, 'events_evaluation_queue', new Error('database unavailable'));
+        await service.handleFailure(
+            context,
+            'events_evaluation_queue',
+            new Error('database unavailable'),
+        );
 
-        expect(channel.assertQueue).toHaveBeenCalledWith('events_evaluation_queue.dlq', { durable: true });
+        expect(channel.assertQueue).toHaveBeenCalledWith('events_evaluation_queue.dlq', {
+            durable: true,
+        });
         expect(channel.sendToQueue).toHaveBeenCalledWith(
             'events_evaluation_queue.dlq',
             message.content,
@@ -93,8 +99,9 @@ describe('RmqRetryService', () => {
     it('does not acknowledge the source if forwarding to the retry queue fails', async () => {
         channel.assertQueue.mockRejectedValueOnce(new Error('broker unavailable'));
 
-        await expect(service.handleFailure(context, 'events_queue', new Error('temporary')))
-            .rejects.toThrow('broker unavailable');
+        await expect(
+            service.handleFailure(context, 'events_queue', new Error('temporary')),
+        ).rejects.toThrow('broker unavailable');
         expect(channel.ack).not.toHaveBeenCalled();
     });
 });

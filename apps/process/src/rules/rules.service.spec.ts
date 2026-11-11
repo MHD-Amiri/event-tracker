@@ -100,7 +100,11 @@ describe('RulesService', () => {
             model.countDocuments.mockResolvedValue(12);
 
             await expect(service.findAll('2', '5')).resolves.toEqual({
-                items: rules, total: 12, page: 2, limit: 5, totalPages: 3,
+                items: rules,
+                total: 12,
+                page: 2,
+                limit: 5,
+                totalPages: 3,
             });
 
             expect(model.find).toHaveBeenCalledWith({});
@@ -141,7 +145,10 @@ describe('RulesService', () => {
         it('updates a Rule, invalidates the active Rule cache, and returns the updated Rule', async () => {
             await expect(service.update(ruleId, updateDto)).resolves.toBe(updatedRule);
 
-            expect(model.findByIdAndUpdate).toHaveBeenCalledWith(ruleId, updateDto, { new: true, runValidators: true });
+            expect(model.findByIdAndUpdate).toHaveBeenCalledWith(ruleId, updateDto, {
+                new: true,
+                runValidators: true,
+            });
             expect(redis.invalidateRulesCache).toHaveBeenCalledTimes(1);
         });
 
@@ -154,7 +161,9 @@ describe('RulesService', () => {
         });
 
         it('rejects malformed IDs before updating Mongo', async () => {
-            await expect(service.update('invalid-id', updateDto)).rejects.toThrow(BadRequestException);
+            await expect(service.update('invalid-id', updateDto)).rejects.toThrow(
+                BadRequestException,
+            );
             expect(model.findByIdAndUpdate).not.toHaveBeenCalled();
         });
     });
@@ -223,10 +232,18 @@ describe('RulesService', () => {
         it('does not let a slow pre-mutation read overwrite the cache after invalidation', async () => {
             let resolveRules!: (rules: Rule[]) => void;
             let cacheVersion = '0';
-            findLean.mockReturnValue(new Promise<Rule[]>((resolve) => { resolveRules = resolve; }));
+            findLean.mockReturnValue(
+                new Promise<Rule[]>((resolve) => {
+                    resolveRules = resolve;
+                }),
+            );
             redis.getRulesCacheVersion.mockImplementation(async () => cacheVersion);
-            redis.invalidateRulesCache.mockImplementation(async () => { cacheVersion = '1'; });
-            redis.setCachedRules.mockImplementation(async (_rules: Rule[], version: string) => version === cacheVersion);
+            redis.invalidateRulesCache.mockImplementation(async () => {
+                cacheVersion = '1';
+            });
+            redis.setCachedRules.mockImplementation(
+                async (_rules: Rule[], version: string) => version === cacheVersion,
+            );
 
             const staleRead = service.getActiveRules();
             await Promise.resolve();

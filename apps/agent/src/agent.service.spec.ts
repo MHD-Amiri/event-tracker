@@ -24,9 +24,10 @@ describe('AgentService', () => {
     let service: AgentService;
     const clientProxyMock = rmq.clientProxy as jest.Mock;
 
-    const createConfig = (values: Record<string, string> = {}) => ({
-        get: jest.fn((key: string, defaultValue?: unknown) => values[key] ?? defaultValue),
-    }) as unknown as ConfigService;
+    const createConfig = (values: Record<string, string> = {}) =>
+        ({
+            get: jest.fn((key: string, defaultValue?: unknown) => values[key] ?? defaultValue),
+        }) as unknown as ConfigService;
 
     beforeEach(() => {
         jest.clearAllMocks();
@@ -60,15 +61,18 @@ describe('AgentService', () => {
         await jest.advanceTimersByTimeAsync(200);
 
         expect(client.emit).toHaveBeenCalledTimes(1);
-        expect(client.emit).toHaveBeenCalledWith('event_created', expect.objectContaining({
-            eventId: expect.any(String),
-            agentId: 'agent-default-1',
-            timestamp: '2026-11-09T12:34:56.200Z',
-            payload: expect.objectContaining({
-                name: expect.any(String),
-                value: expect.any(Number),
-            }),
-        } satisfies Partial<SensorEventMessage>));
+        expect(client.emit).toHaveBeenCalledWith(
+            'event_created',
+            expect.objectContaining({
+                eventId: expect.any(String),
+                agentId: 'agent-default-1',
+                timestamp: '2026-11-09T12:34:56.200Z',
+                payload: expect.objectContaining({
+                    name: expect.any(String),
+                    value: expect.any(Number),
+                }),
+            } satisfies Partial<SensorEventMessage>),
+        );
 
         const [, sensorEvent] = client.emit.mock.calls[0] as [string, SensorEventMessage];
         expect(metrics).toContain(sensorEvent.payload.name);
@@ -86,15 +90,19 @@ describe('AgentService', () => {
         await jest.advanceTimersByTimeAsync(149);
         expect(client.emit).toHaveBeenCalledTimes(2);
 
-        const emitted = client.emit.mock.calls.map(([, sensorEvent]) => sensorEvent as SensorEventMessage);
+        const emitted = client.emit.mock.calls.map(
+            ([, sensorEvent]) => sensorEvent as SensorEventMessage,
+        );
         expect(emitted.every((sensorEvent) => sensorEvent.agentId === 'sensor-west-3')).toBe(true);
     });
 
     it('waits for the broker connection before starting emission', async () => {
         let resolveConnect!: () => void;
-        client.connect.mockReturnValueOnce(new Promise<void>((resolve) => {
-            resolveConnect = resolve;
-        }));
+        client.connect.mockReturnValueOnce(
+            new Promise<void>((resolve) => {
+                resolveConnect = resolve;
+            }),
+        );
 
         const initialization = service.onModuleInit();
         await jest.advanceTimersByTimeAsync(1000);
@@ -135,7 +143,9 @@ describe('AgentService', () => {
         await jest.advanceTimersByTimeAsync(200);
 
         const [, message] = client.emit.mock.calls[0] as [string, SensorEventMessage];
-        expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(`eventId=${message.eventId}`));
+        expect(errorLog).toHaveBeenCalledWith(
+            expect.stringContaining(`eventId=${message.eventId}`),
+        );
         expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('broker disconnected'));
     });
 

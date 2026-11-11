@@ -65,6 +65,6 @@ MatchedEventSchema.index(
     { unique: true, partialFilterExpression: { eventId: { $type: 'string' } } },
 );
 
-export class ArchivedMatchedEvent extends MatchedEvent { }
+export class ArchivedMatchedEvent extends MatchedEvent {}
 export const ArchivedMatchedEventSchema = MatchedEventSchema.clone();
 ArchivedMatchedEventSchema.set('collection', 'matched_events_archive');

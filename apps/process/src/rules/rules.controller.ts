@@ -5,7 +5,7 @@ import { UpdateRuleDto } from './dto/update-rule.dto';
 
 @Controller('rules')
 export class RulesController {
-    constructor(private readonly rulesService: RulesService) { }
+    constructor(private readonly rulesService: RulesService) {}
 
     @Post()
     create(@Body() dto: CreateRuleDto) {

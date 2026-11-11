@@ -24,18 +24,26 @@ describe('RabbitMQ configuration', () => {
 
     describe('brokerUrl()', () => {
         it('prefers the canonical broker URL when both variables are configured', () => {
-            expect(brokerUrl(config({
-                RABBITMQ_URL: 'amqp://primary.example',
-                RABBITMQ_URI: 'amqp://legacy.example',
-            }))).toBe('amqp://primary.example');
+            expect(
+                brokerUrl(
+                    config({
+                        RABBITMQ_URL: 'amqp://primary.example',
+                        RABBITMQ_URI: 'amqp://legacy.example',
+                    }),
+                ),
+            ).toBe('amqp://primary.example');
         });
 
         it('uses the default broker URL when neither variable is configured', () => {
             const warning = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
 
             expect(brokerUrl(config())).toBe(DEFAULT_BROKER_URL);
-            expect(warning).toHaveBeenCalledWith(expect.stringContaining('RABBITMQ_URL is not set'));
-            expect(warning).toHaveBeenCalledWith(expect.stringContaining('copy .sample.env to .env'));
+            expect(warning).toHaveBeenCalledWith(
+                expect.stringContaining('RABBITMQ_URL is not set'),
+            );
+            expect(warning).toHaveBeenCalledWith(
+                expect.stringContaining('copy .sample.env to .env'),
+            );
         });
 
         it('uses the deprecated URL only as a fallback and warns once', () => {
@@ -46,7 +54,9 @@ describe('RabbitMQ configuration', () => {
             expect(brokerUrl(legacyConfig)).toBe('amqp://legacy.example');
 
             expect(warning).toHaveBeenCalledTimes(1);
-            expect(warning).toHaveBeenCalledWith(expect.stringContaining('RABBITMQ_URI is deprecated'));
+            expect(warning).toHaveBeenCalledWith(
+                expect.stringContaining('RABBITMQ_URI is deprecated'),
+            );
         });
     });
 
@@ -59,10 +69,14 @@ describe('RabbitMQ configuration', () => {
         });
 
         it('applies ingestion and evaluation queue overrides independently', () => {
-            expect(queueNames(config({
-                RMQ_INGESTION_QUEUE: 'custom-ingestion',
-                RMQ_EVALUATION_QUEUE: 'custom-evaluation',
-            }))).toEqual({
+            expect(
+                queueNames(
+                    config({
+                        RMQ_INGESTION_QUEUE: 'custom-ingestion',
+                        RMQ_EVALUATION_QUEUE: 'custom-evaluation',
+                    }),
+                ),
+            ).toEqual({
                 ingestion: 'custom-ingestion',
                 evaluation: 'custom-evaluation',
             });
@@ -71,9 +85,14 @@ describe('RabbitMQ configuration', () => {
 
     describe('publisherOptions()', () => {
         it('configures a durable publisher for the selected queue and broker', () => {
-            expect(publisherOptions('custom-ingestion', config({
-                RABBITMQ_URL: 'amqp://broker.example',
-            }))).toEqual({
+            expect(
+                publisherOptions(
+                    'custom-ingestion',
+                    config({
+                        RABBITMQ_URL: 'amqp://broker.example',
+                    }),
+                ),
+            ).toEqual({
                 urls: ['amqp://broker.example'],
                 queue: 'custom-ingestion',
                 queueOptions: { durable: true },
@@ -105,10 +124,15 @@ describe('RabbitMQ configuration', () => {
         });
 
         it('uses a configured prefetch count', () => {
-            expect(consumerOptions('events_evaluation_queue', config({
-                RMQ_PREFETCH_COUNT: '125',
-                RABBITMQ_URL: 'amqp://broker.example',
-            }))).toEqual({
+            expect(
+                consumerOptions(
+                    'events_evaluation_queue',
+                    config({
+                        RMQ_PREFETCH_COUNT: '125',
+                        RABBITMQ_URL: 'amqp://broker.example',
+                    }),
+                ),
+            ).toEqual({
                 urls: ['amqp://broker.example'],
                 queue: 'events_evaluation_queue',
                 queueOptions: { durable: true },
@@ -119,9 +143,14 @@ describe('RabbitMQ configuration', () => {
         });
 
         it('falls back to the default prefetch count for malformed configuration', () => {
-            expect(consumerOptions('events_queue', config({
-                RMQ_PREFETCH_COUNT: 'not-a-number',
-            })).prefetchCount).toBe(DEFAULT_PREFETCH_COUNT);
+            expect(
+                consumerOptions(
+                    'events_queue',
+                    config({
+                        RMQ_PREFETCH_COUNT: 'not-a-number',
+                    }),
+                ).prefetchCount,
+            ).toBe(DEFAULT_PREFETCH_COUNT);
         });
 
         it('includes consumer options in the Nest microservice configuration', () => {

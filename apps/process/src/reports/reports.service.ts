@@ -31,12 +31,19 @@ export class ReportsService {
     ) {
         const raw = configService.get<string>('REPORT_MAX_WINDOW_HOURS');
         const parsed = raw ? Number(raw) : MAX_REPORT_WINDOW_HOURS;
-        this.maxReportWindowHours = Number.isFinite(parsed) && parsed > 0
-            ? Math.min(parsed, MAX_REPORT_WINDOW_HOURS)
-            : MAX_REPORT_WINDOW_HOURS;
+        this.maxReportWindowHours =
+            Number.isFinite(parsed) && parsed > 0
+                ? Math.min(parsed, MAX_REPORT_WINDOW_HOURS)
+                : MAX_REPORT_WINDOW_HOURS;
     }
 
-    async getAgentTimestamps(ruleId: string, start: string, end: string, limit?: string, cursor?: string) {
+    async getAgentTimestamps(
+        ruleId: string,
+        start: string,
+        end: string,
+        limit?: string,
+        cursor?: string,
+    ) {
         if (!Types.ObjectId.isValid(ruleId)) {
             throw new BadRequestException('Invalid ruleId format.');
         }
@@ -49,7 +56,9 @@ export class ReportsService {
 
         const diffHours = (endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60);
         if (diffHours > this.maxReportWindowHours || diffHours < 0) {
-            throw new BadRequestException(`Time window must be at most ${this.maxReportWindowHours} hours.`);
+            throw new BadRequestException(
+                `Time window must be at most ${this.maxReportWindowHours} hours.`,
+            );
         }
 
         const pageSize = this.parsePageSize(limit);
@@ -74,7 +83,7 @@ export class ReportsService {
             { $sort: { matchedAt: 1 as const, eventId: 1 as const } },
             { $limit: pageSize + 1 },
         ];
-        const rows = await this.matchedEventModel.aggregate([
+        const rows = (await this.matchedEventModel.aggregate([
             ...pageQuery,
             {
                 $unionWith: {
@@ -85,7 +94,7 @@ export class ReportsService {
             { $sort: { matchedAt: 1, eventId: 1 } },
             { $limit: pageSize + 1 },
             { $project: { _id: 0, eventId: 1, agentId: 1, matchedAt: 1 } },
-        ]) as TimestampRow[];
+        ])) as TimestampRow[];
 
         const hasMore = rows.length > pageSize;
         const page = rows.slice(0, pageSize);
@@ -116,7 +125,8 @@ export class ReportsService {
 
     private parsePageSize(raw?: string): number {
         if (raw === undefined) return DEFAULT_PAGE_SIZE;
-        if (!/^\d+$/.test(raw)) throw new BadRequestException('limit must be an integer between 1 and 500.');
+        if (!/^\d+$/.test(raw))
+            throw new BadRequestException('limit must be an integer between 1 and 500.');
         const value = Number(raw);
         if (!Number.isSafeInteger(value) || value < 1 || value > MAX_PAGE_SIZE) {
             throw new BadRequestException('limit must be an integer between 1 and 500.');
@@ -129,7 +139,13 @@ export class ReportsService {
             if (!/^[A-Za-z0-9_-]+$/.test(raw)) throw new Error();
             const parsed = JSON.parse(Buffer.from(raw, 'base64url').toString()) as TimestampCursor;
             const matchedAt = new Date(parsed.matchedAt);
-            if (!parsed || isNaN(matchedAt.getTime()) || typeof parsed.eventId !== 'string' || !parsed.eventId) throw new Error();
+            if (
+                !parsed ||
+                isNaN(matchedAt.getTime()) ||
+                typeof parsed.eventId !== 'string' ||
+                !parsed.eventId
+            )
+                throw new Error();
             return { matchedAt, eventId: parsed.eventId };
         } catch {
             throw new BadRequestException('Invalid cursor.');
@@ -137,6 +153,8 @@ export class ReportsService {
     }
 
     private encodeCursor(row: TimestampRow): string {
-        return Buffer.from(JSON.stringify({ matchedAt: row.matchedAt.toISOString(), eventId: row.eventId })).toString('base64url');
+        return Buffer.from(
+            JSON.stringify({ matchedAt: row.matchedAt.toISOString(), eventId: row.eventId }),
+        ).toString('base64url');
     }
 }

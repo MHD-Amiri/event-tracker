@@ -13,7 +13,7 @@ export function resolveMongoUri(
 
     warn(
         '⚠️ MONGO_URI is not set; using the local MongoDB default at localhost:27017/event_tracker. ' +
-        'Set MONGO_URI to use another database.',
+            'Set MONGO_URI to use another database.',
     );
     return DEFAULT_MONGO_URI;
 }

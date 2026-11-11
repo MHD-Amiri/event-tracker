@@ -17,7 +17,7 @@ import { HistoryArchiveService } from './archive/history-archive.service';
         HistoryArchiveModule,
     ],
 })
-class HistoryMaintenanceModule { }
+class HistoryMaintenanceModule {}
 
 async function archiveHistory(): Promise<void> {
     const app = await NestFactory.createApplicationContext(HistoryMaintenanceModule);

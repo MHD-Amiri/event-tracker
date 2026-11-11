@@ -26,7 +26,7 @@ export class PipelineController {
         private readonly pipelineService: PipelineService,
         private readonly retryService: RmqRetryService,
         private readonly config: ConfigService,
-    ) { }
+    ) {}
 
     @EventPattern('event_created')
     async handleEventCreated(@Payload() data: SensorEventMessage, @Ctx() context: RmqContext) {
@@ -58,7 +58,9 @@ export class PipelineController {
         const permanent = error instanceof InvalidSensorEventError;
         const safeError = error instanceof Error ? error : new Error(String(error));
         this.logger.error(
-            permanent ? 'Invalid sensor event; sending to dead-letter queue' : 'Sensor event processing failed; scheduling retry',
+            permanent
+                ? 'Invalid sensor event; sending to dead-letter queue'
+                : 'Sensor event processing failed; scheduling retry',
             safeError.stack,
         );
 
@@ -67,8 +69,10 @@ export class PipelineController {
         } catch (forwardError) {
             const channel = context.getChannelRef();
             const message = context.getMessage();
-            this.logger.error('Could not forward failed delivery; leaving it for broker recovery',
-                forwardError instanceof Error ? forwardError.stack : String(forwardError));
+            this.logger.error(
+                'Could not forward failed delivery; leaving it for broker recovery',
+                forwardError instanceof Error ? forwardError.stack : String(forwardError),
+            );
             channel.nack(message, false, true);
         }
     }

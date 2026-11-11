@@ -12,8 +12,14 @@ export function validateSensorEventMessage(value: unknown): asserts value is Sen
         throw new InvalidSensorEventError('message must be an object');
     }
 
-    if (typeof value.eventId !== 'string' || value.eventId.trim().length === 0 || value.eventId.length > 256) {
-        throw new InvalidSensorEventError('eventId must be a non-empty string up to 256 characters');
+    if (
+        typeof value.eventId !== 'string' ||
+        value.eventId.trim().length === 0 ||
+        value.eventId.length > 256
+    ) {
+        throw new InvalidSensorEventError(
+            'eventId must be a non-empty string up to 256 characters',
+        );
     }
 
     if (typeof value.agentId !== 'string' || value.agentId.trim().length === 0) {

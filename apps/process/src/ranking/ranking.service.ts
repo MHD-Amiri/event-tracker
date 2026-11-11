@@ -13,9 +13,11 @@ export interface MatchCountInput extends Partial<MatchedEvent> {
 @Injectable()
 export class RankingService {
     constructor(
-        @InjectModel(MatchedEvent.name) private readonly matchedEventModel: Model<MatchedEventDocument>,
-        @InjectModel(RuleAgentCount.name) private readonly countModel: Model<RuleAgentCountDocument>,
-    ) { }
+        @InjectModel(MatchedEvent.name)
+        private readonly matchedEventModel: Model<MatchedEventDocument>,
+        @InjectModel(RuleAgentCount.name)
+        private readonly countModel: Model<RuleAgentCountDocument>,
+    ) {}
 
     /** Record one idempotent Match and its durable count in the same Mongo transaction. */
     async recordMatches(matches: MatchCountInput[]): Promise<void> {
@@ -33,7 +35,10 @@ export class RankingService {
                     if (result.upsertedCount > 0) {
                         await this.countModel.updateOne(
                             { ruleId: match.ruleId, agentId: match.agentId },
-                            { $inc: { totalMatches: 1 }, $setOnInsert: { ruleId: match.ruleId, agentId: match.agentId } },
+                            {
+                                $inc: { totalMatches: 1 },
+                                $setOnInsert: { ruleId: match.ruleId, agentId: match.agentId },
+                            },
                             { upsert: true, session },
                         );
                     }
@@ -59,8 +64,20 @@ export class RankingService {
     async rebuildFromMatchHistory(): Promise<void> {
         const counts = await this.matchedEventModel.aggregate([
             { $unionWith: { coll: 'matched_events_archive', pipeline: [] } },
-            { $group: { _id: { ruleId: '$ruleId', agentId: '$agentId' }, totalMatches: { $sum: 1 } } },
-            { $project: { _id: 0, ruleId: '$_id.ruleId', agentId: '$_id.agentId', totalMatches: 1 } },
+            {
+                $group: {
+                    _id: { ruleId: '$ruleId', agentId: '$agentId' },
+                    totalMatches: { $sum: 1 },
+                },
+            },
+            {
+                $project: {
+                    _id: 0,
+                    ruleId: '$_id.ruleId',
+                    agentId: '$_id.agentId',
+                    totalMatches: 1,
+                },
+            },
         ]);
         const session = await this.countModel.db.startSession();
         try {

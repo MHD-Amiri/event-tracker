@@ -34,7 +34,7 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         const raw = this.configService.get<string>(key);
         const parsed = raw ? Number(raw) : fallback;
         if (!Number.isFinite(parsed) || parsed <= 0) {
-            console.warn(`⚠️ Invalid ${key} "${raw}", falling back to ${fallback}s`);
+            this.logger.warn(`Invalid ${key} "${raw}"; falling back to ${fallback}s.`);
             return fallback;
         }
         return parsed;
@@ -55,9 +55,10 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
 
         const host = configuredHost || 'localhost';
         const parsedPort = Number(configuredPort ?? 6379);
-        const port = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535
-            ? parsedPort
-            : 6379;
+        const port =
+            Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535
+                ? parsedPort
+                : 6379;
         if (configuredPort && port !== parsedPort) {
             this.logger.warn(`Invalid REDIS_PORT "${configuredPort}"; using default port 6379.`);
         }
@@ -109,7 +110,11 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     }
 
     async invalidateRulesCache(): Promise<void> {
-        await this.client.eval(INVALIDATE_RULES_CACHE, 2, RULES_CACHE_VERSION_KEY, this.RULES_CACHE_KEY);
+        await this.client.eval(
+            INVALIDATE_RULES_CACHE,
+            2,
+            RULES_CACHE_VERSION_KEY,
+            this.RULES_CACHE_KEY,
+        );
     }
-
 }

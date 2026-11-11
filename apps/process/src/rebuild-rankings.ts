@@ -17,7 +17,7 @@ import { RankingService } from './ranking/ranking.service';
         RankingModule,
     ],
 })
-class RankingMaintenanceModule { }
+class RankingMaintenanceModule {}
 
 async function rebuildRankings(): Promise<void> {
     const app = await NestFactory.createApplicationContext(RankingMaintenanceModule);

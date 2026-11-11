@@ -13,6 +13,7 @@ const env: ConfigReader = {
         return (raw ?? defaultValue) as T;
     },
 };
+const logger = new Logger('ProcessBootstrap');
 
 // Deployment role: 'both' (default, single-process dev setup), 'ingest'
 // (events_queue consumer + HTTP + report APIs), or 'evaluate'
@@ -47,10 +48,14 @@ export async function bootstrap(role = process.env.PROCESS_ROLE || 'both') {
     if (role === 'both' || role === 'ingest') {
         const port = process.env.PORT || 3000;
         await app.listen(port);
-        console.log(`🚀 [role: ${role}] HTTP server running on: http://localhost:${port}`);
-        console.log(`📡 [role: ${role}] Listening to RabbitMQ: '${queues.ingestion}' & '${queues.evaluation}'`);
+        logger.log(`role=${role} HTTP server listening on port=${port}`);
+        logger.log(
+            `role=${role} RabbitMQ queues ingestion=${queues.ingestion} evaluation=${queues.evaluation}`,
+        );
     } else {
-        console.log(`📡 [role: ${role}] Pure evaluation worker — listening to RabbitMQ: '${queues.evaluation}'`);
+        logger.log(
+            `role=${role} evaluation worker listening to RabbitMQ queue=${queues.evaluation}`,
+        );
     }
 }
 
@@ -60,7 +65,7 @@ export async function runBootstrap(): Promise<boolean> {
         return true;
     } catch (error) {
         const detail = describeStartupError(error);
-        Logger.error(`Process startup failed: ${detail}`, undefined, 'ProcessBootstrap');
+        logger.error(`Process startup failed: ${detail}`);
         process.exitCode = 1;
         return false;
     }

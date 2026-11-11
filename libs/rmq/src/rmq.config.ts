@@ -1,4 +1,10 @@
-import { ClientProxy, ClientProxyFactory, MicroserviceOptions, RmqOptions, Transport } from '@nestjs/microservices';
+import {
+    ClientProxy,
+    ClientProxyFactory,
+    MicroserviceOptions,
+    RmqOptions,
+    Transport,
+} from '@nestjs/microservices';
 
 /** Canonical broker variable. `RABBITMQ_URI` is accepted as a deprecated fallback. */
 export const BROKER_URL_VAR = 'RABBITMQ_URL';
@@ -36,7 +42,7 @@ export function brokerUrl(env: ConfigReader): string {
             warnedAboutDeprecatedVar = true;
             console.warn(
                 `⚠️ ${DEPRECATED_BROKER_URL_VAR} is deprecated — set ${BROKER_URL_VAR} instead. ` +
-                `Falling back to ${DEPRECATED_BROKER_URL_VAR} for this process.`,
+                    `Falling back to ${DEPRECATED_BROKER_URL_VAR} for this process.`,
             );
         }
         return uri;
@@ -46,8 +52,8 @@ export function brokerUrl(env: ConfigReader): string {
         warnedAboutDefaultBrokerUrl = true;
         console.warn(
             `⚠️ ${BROKER_URL_VAR} is not set; using the built-in local broker default. ` +
-            `For this repository's Docker Compose broker, copy .sample.env to .env before starting the apps, ` +
-            `or set ${BROKER_URL_VAR} to the broker's credentials.`,
+                `For this repository's Docker Compose broker, copy .sample.env to .env before starting the apps, ` +
+                `or set ${BROKER_URL_VAR} to the broker's credentials.`,
         );
     }
 
@@ -95,9 +101,10 @@ export function consumerOptions(queue: string, env: ConfigReader): RmqOptions['o
     const rawPrefetch = env.get<string>('RMQ_PREFETCH_COUNT');
     const prefetchCount = Number(rawPrefetch) || DEFAULT_PREFETCH_COUNT;
     const rawAttempts = Number(env.get<string>('RMQ_MAX_CONNECTION_ATTEMPTS'));
-    const maxConnectionAttempts = Number.isInteger(rawAttempts) && rawAttempts > 0
-        ? rawAttempts
-        : DEFAULT_MAX_CONNECTION_ATTEMPTS;
+    const maxConnectionAttempts =
+        Number.isInteger(rawAttempts) && rawAttempts > 0
+            ? rawAttempts
+            : DEFAULT_MAX_CONNECTION_ATTEMPTS;
 
     return {
         urls: [brokerUrl(env)],

@@ -12,9 +12,7 @@ import { RankingModule } from '../ranking/ranking.module';
 
 @Module({
     imports: [
-        MongooseModule.forFeature([
-            { name: Event.name, schema: EventSchema },
-        ]),
+        MongooseModule.forFeature([{ name: Event.name, schema: EventSchema }]),
         ClientsModule.registerAsync([
             {
                 name: 'INTERNAL_RABBITMQ_SERVICE',
@@ -30,4 +28,4 @@ import { RankingModule } from '../ranking/ranking.module';
     controllers: [PipelineController],
     providers: [PipelineService, RmqRetryService],
 })
-export class PipelineModule { }
+export class PipelineModule {}

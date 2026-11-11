@@ -37,7 +37,7 @@ export class PipelineService {
         @Inject('INTERNAL_RABBITMQ_SERVICE') private readonly rmqClient: ClientProxy,
         private readonly rulesService: RulesService,
         private readonly rankingService: RankingService,
-    ) { }
+    ) {}
 
     async ingest(dto: SensorEventMessage): Promise<void> {
         validateSensorEventMessage(dto);
@@ -102,12 +102,16 @@ export class PipelineService {
         }
 
         if (matchesToInsert.length > 0) {
-            await this.rankingService.recordMatches(matchesToInsert as {
-                ruleId: Types.ObjectId;
-                eventId: string;
-                agentId: string;
-            }[]);
-            this.logger.log(`Stored ${matchesToInsert.length} rule match(es) for agent ${event.agentId}`);
+            await this.rankingService.recordMatches(
+                matchesToInsert as {
+                    ruleId: Types.ObjectId;
+                    eventId: string;
+                    agentId: string;
+                }[],
+            );
+            this.logger.log(
+                `Stored ${matchesToInsert.length} rule match(es) for agent ${event.agentId}`,
+            );
         }
     }
 }
@@ -117,12 +121,19 @@ export class PipelineService {
 // live in evaluate(), which is tested through PipelineService's interface.
 export function checkCondition(val: number, op: RuleOperator, target: number): boolean {
     switch (op) {
-        case RuleOperator.EQUALS: return val === target;
-        case RuleOperator.NOT_EQUALS: return val !== target;
-        case RuleOperator.GREATER_THAN: return val > target;
-        case RuleOperator.GREATER_THAN_OR_EQUAL: return val >= target;
-        case RuleOperator.LESS_THAN: return val < target;
-        case RuleOperator.LESS_THAN_OR_EQUAL: return val <= target;
-        default: return false;
+        case RuleOperator.EQUALS:
+            return val === target;
+        case RuleOperator.NOT_EQUALS:
+            return val !== target;
+        case RuleOperator.GREATER_THAN:
+            return val > target;
+        case RuleOperator.GREATER_THAN_OR_EQUAL:
+            return val >= target;
+        case RuleOperator.LESS_THAN:
+            return val < target;
+        case RuleOperator.LESS_THAN_OR_EQUAL:
+            return val <= target;
+        default:
+            return false;
     }
 }

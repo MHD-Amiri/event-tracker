@@ -5,7 +5,12 @@ import { connect, disconnect, Types, Model } from 'mongoose';
 import { PipelineService, checkCondition } from './pipeline.service';
 import { Event, EventDocument, EventSchema, SensorEventMessage } from './schemas/event.schema';
 import { Rule, RuleSchema, RuleOperator } from '../rules/schemas/rule.schema';
-import { ArchivedMatchedEvent, ArchivedMatchedEventSchema, MatchedEvent, MatchedEventDocument, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
+import {
+    ArchivedMatchedEvent,
+    ArchivedMatchedEventSchema,
+    MatchedEvent,
+    MatchedEventSchema,
+} from '../rules/schemas/matched-event.schema';
 import { RulesService } from '../rules/rules.service';
 import { RuleAgentCount, RuleAgentCountSchema } from '../ranking/rule-agent-count.schema';
 import { RankingService } from '../ranking/ranking.service';
@@ -29,7 +34,11 @@ describe('PipelineService', () => {
     let rmqEmit: jest.Mock;
 
     const emitRef = {
-        subscribe: (handlers: { next?: () => void; error?: (error: Error) => void; complete?: () => void }) => {
+        subscribe: (handlers: {
+            next?: () => void;
+            error?: (error: Error) => void;
+            complete?: () => void;
+        }) => {
             handlers.complete?.();
             return { unsubscribe: () => undefined };
         },
@@ -41,7 +50,10 @@ describe('PipelineService', () => {
         eventModel = connection.model(Event.name, EventSchema);
         ruleModel = connection.model(Rule.name, RuleSchema);
         matchedEventModel = connection.model(MatchedEvent.name, MatchedEventSchema);
-        const archivedMatchedEventModel = connection.model(ArchivedMatchedEvent.name, ArchivedMatchedEventSchema);
+        const archivedMatchedEventModel = connection.model(
+            ArchivedMatchedEvent.name,
+            ArchivedMatchedEventSchema,
+        );
         countModel = connection.model(RuleAgentCount.name, RuleAgentCountSchema);
         await matchedEventModel.init();
         await archivedMatchedEventModel.init();
@@ -169,13 +181,6 @@ describe('PipelineService', () => {
     });
 
     describe('evaluate()', () => {
-        const activeRulesProvider = (rules: any[]) => ({
-            provide: RulesService,
-            useValue: {
-                getActiveRules: async () => rules,
-            },
-        });
-
         // Helper: rebuild the pipeline against a fresh RulesService stub.
         // getActiveRules returns what a JSON round-trip through Redis
         // produces — plain objects with string _id — which is the shape
@@ -241,7 +246,12 @@ describe('PipelineService', () => {
             await fresh.evaluate(event);
             await fresh.evaluate(event);
 
-            expect(await matchedEventModel.countDocuments({ ruleId: rule._id, eventId: event.eventId })).toBe(1);
+            expect(
+                await matchedEventModel.countDocuments({
+                    ruleId: rule._id,
+                    eventId: event.eventId,
+                }),
+            ).toBe(1);
             const [count] = await countModel.find({ ruleId: rule._id }).lean();
             expect(count.totalMatches).toBe(1);
         });
@@ -313,7 +323,10 @@ describe('PipelineService', () => {
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => [cached] } },
-                    { provide: 'INTERNAL_RABBITMQ_SERVICE', useValue: { emit: jest.fn().mockReturnValue(emitRef) } },
+                    {
+                        provide: 'INTERNAL_RABBITMQ_SERVICE',
+                        useValue: { emit: jest.fn().mockReturnValue(emitRef) },
+                    },
                 ],
             }).compile();
             const fresh = moduleRef.get(PipelineService);
@@ -344,7 +357,10 @@ describe('PipelineService', () => {
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => [cached] } },
-                    { provide: 'INTERNAL_RABBITMQ_SERVICE', useValue: { emit: jest.fn().mockReturnValue(emitRef) } },
+                    {
+                        provide: 'INTERNAL_RABBITMQ_SERVICE',
+                        useValue: { emit: jest.fn().mockReturnValue(emitRef) },
+                    },
                 ],
             }).compile();
             const fresh = moduleRef.get(PipelineService);
@@ -364,8 +380,22 @@ describe('PipelineService', () => {
 
         it('skips rules for a different eventName and rules whose condition fails', async () => {
             const rules = [
-                { _id: new Types.ObjectId().toHexString(), name: 'Other metric', eventName: 'pressure', operator: '>', value: 40, isActive: true },
-                { _id: new Types.ObjectId().toHexString(), name: 'Low threshold', eventName: 'temperature', operator: '>', value: 100, isActive: true },
+                {
+                    _id: new Types.ObjectId().toHexString(),
+                    name: 'Other metric',
+                    eventName: 'pressure',
+                    operator: '>',
+                    value: 40,
+                    isActive: true,
+                },
+                {
+                    _id: new Types.ObjectId().toHexString(),
+                    name: 'Low threshold',
+                    eventName: 'temperature',
+                    operator: '>',
+                    value: 100,
+                    isActive: true,
+                },
             ];
 
             const moduleRef = await Test.createTestingModule({
@@ -375,7 +405,10 @@ describe('PipelineService', () => {
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => rules } },
-                    { provide: 'INTERNAL_RABBITMQ_SERVICE', useValue: { emit: jest.fn().mockReturnValue(emitRef) } },
+                    {
+                        provide: 'INTERNAL_RABBITMQ_SERVICE',
+                        useValue: { emit: jest.fn().mockReturnValue(emitRef) },
+                    },
                 ],
             }).compile();
             const fresh = moduleRef.get(PipelineService);
@@ -393,7 +426,10 @@ describe('PipelineService', () => {
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => [] } },
-                    { provide: 'INTERNAL_RABBITMQ_SERVICE', useValue: { emit: jest.fn().mockReturnValue(emitRef) } },
+                    {
+                        provide: 'INTERNAL_RABBITMQ_SERVICE',
+                        useValue: { emit: jest.fn().mockReturnValue(emitRef) },
+                    },
                 ],
             }).compile();
             const fresh = moduleRef.get(PipelineService);

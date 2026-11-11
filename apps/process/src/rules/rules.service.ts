@@ -14,7 +14,7 @@ export class RulesService {
     constructor(
         @InjectModel(Rule.name) private ruleModel: Model<RuleDocument>,
         private readonly redisService: RedisService,
-    ) { }
+    ) {}
 
     // --- CRUD Operations ---
 
@@ -53,7 +53,9 @@ export class RulesService {
 
     async update(id: string, dto: UpdateRuleDto): Promise<Rule> {
         this.assertValidId(id);
-        const updated = await this.ruleModel.findByIdAndUpdate(id, dto, { new: true, runValidators: true }).lean();
+        const updated = await this.ruleModel
+            .findByIdAndUpdate(id, dto, { new: true, runValidators: true })
+            .lean();
         if (!updated) throw new NotFoundException(`Rule #${id} not found`);
         await this.redisService.invalidateRulesCache();
         return updated;

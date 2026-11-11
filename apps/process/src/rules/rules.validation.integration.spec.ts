@@ -19,7 +19,10 @@ describe('Rules validation', () => {
         connection = await mongoose.createConnection(replicaSet.getUri()).asPromise();
         model = connection.model(Rule.name, RuleSchema);
         await model.init();
-        service = new RulesService(model as never, { invalidateRulesCache: jest.fn() } as unknown as RedisService);
+        service = new RulesService(
+            model as never,
+            { invalidateRulesCache: jest.fn() } as unknown as RedisService,
+        );
     }, 60_000);
 
     afterAll(async () => {
@@ -33,7 +36,10 @@ describe('Rules validation', () => {
 
     it('rejects invalid DTO fields including empty optional update strings', async () => {
         const invalidCreate = plainToInstance(CreateRuleDto, {
-            name: '', eventName: 'temperature', operator: '>', value: 10,
+            name: '',
+            eventName: 'temperature',
+            operator: '>',
+            value: 10,
         });
         const invalidUpdate = plainToInstance(UpdateRuleDto, { name: '' });
 
@@ -50,8 +56,9 @@ describe('Rules validation', () => {
             value: 80,
         });
 
-        await expect(service.update(String(rule._id), { operator: 'invalid' as RuleOperator }))
-            .rejects.toThrow();
+        await expect(
+            service.update(String(rule._id), { operator: 'invalid' as RuleOperator }),
+        ).rejects.toThrow();
 
         const unchanged = await service.findOne(String(rule._id));
         expect(unchanged.operator).toBe(RuleOperator.GREATER_THAN);

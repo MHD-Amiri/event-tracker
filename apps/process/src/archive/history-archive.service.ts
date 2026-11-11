@@ -3,7 +3,11 @@ import { ConfigService } from '@nestjs/config';
 import { InjectModel } from '@nestjs/mongoose';
 import { Model } from 'mongoose';
 import { Event, EventDocument, ArchivedEvent } from '../pipeline/schemas/event.schema';
-import { MatchedEvent, MatchedEventDocument, ArchivedMatchedEvent } from '../rules/schemas/matched-event.schema';
+import {
+    MatchedEvent,
+    MatchedEventDocument,
+    ArchivedMatchedEvent,
+} from '../rules/schemas/matched-event.schema';
 
 const DEFAULT_RETENTION_DAYS = 90;
 const DEFAULT_BATCH_SIZE = 200;
@@ -17,18 +21,42 @@ export class HistoryArchiveService {
     constructor(
         @InjectModel(Event.name) private readonly eventModel: Model<EventDocument>,
         @InjectModel(ArchivedEvent.name) private readonly archivedEventModel: Model<EventDocument>,
-        @InjectModel(MatchedEvent.name) private readonly matchedEventModel: Model<MatchedEventDocument>,
-        @InjectModel(ArchivedMatchedEvent.name) private readonly archivedMatchedEventModel: Model<MatchedEventDocument>,
+        @InjectModel(MatchedEvent.name)
+        private readonly matchedEventModel: Model<MatchedEventDocument>,
+        @InjectModel(ArchivedMatchedEvent.name)
+        private readonly archivedMatchedEventModel: Model<MatchedEventDocument>,
         config: ConfigService,
     ) {
-        this.retentionDays = this.readPositiveSetting(config, 'HISTORY_RETENTION_DAYS', DEFAULT_RETENTION_DAYS, 36_500);
-        this.batchSize = this.readPositiveSetting(config, 'HISTORY_ARCHIVE_BATCH_SIZE', DEFAULT_BATCH_SIZE, MAX_BATCH_SIZE);
+        this.retentionDays = this.readPositiveSetting(
+            config,
+            'HISTORY_RETENTION_DAYS',
+            DEFAULT_RETENTION_DAYS,
+            36_500,
+        );
+        this.batchSize = this.readPositiveSetting(
+            config,
+            'HISTORY_ARCHIVE_BATCH_SIZE',
+            DEFAULT_BATCH_SIZE,
+            MAX_BATCH_SIZE,
+        );
     }
 
-    async archiveExpired(asOf = new Date()): Promise<{ cutoff: Date; eventsArchived: number; matchesArchived: number }> {
+    async archiveExpired(
+        asOf = new Date(),
+    ): Promise<{ cutoff: Date; eventsArchived: number; matchesArchived: number }> {
         const cutoff = new Date(asOf.getTime() - this.retentionDays * 24 * 60 * 60 * 1000);
-        const eventsArchived = await this.moveExpired(this.eventModel, this.archivedEventModel, 'timestamp', cutoff);
-        const matchesArchived = await this.moveExpired(this.matchedEventModel, this.archivedMatchedEventModel, 'matchedAt', cutoff);
+        const eventsArchived = await this.moveExpired(
+            this.eventModel,
+            this.archivedEventModel,
+            'timestamp',
+            cutoff,
+        );
+        const matchesArchived = await this.moveExpired(
+            this.matchedEventModel,
+            this.archivedMatchedEventModel,
+            'matchedAt',
+            cutoff,
+        );
         return { cutoff, eventsArchived, matchesArchived };
     }
 
@@ -40,10 +68,11 @@ export class HistoryArchiveService {
     ): Promise<number> {
         let moved = 0;
         while (true) {
-            const expired = await source.find({ [timeField]: { $lt: cutoff } })
+            const expired = (await source
+                .find({ [timeField]: { $lt: cutoff } })
                 .sort({ [timeField]: 1, _id: 1 })
                 .limit(this.batchSize)
-                .lean() as (T & { _id: unknown })[];
+                .lean()) as (T & { _id: unknown })[];
             if (expired.length === 0) return moved;
 
             const ids = expired.map((document) => document._id);
@@ -51,9 +80,16 @@ export class HistoryArchiveService {
             let deletedInBatch = 0;
             try {
                 await session.withTransaction(async () => {
-                    await archive.bulkWrite(expired.map((document) => ({
-                        replaceOne: { filter: { _id: document._id }, replacement: document as never, upsert: true },
-                    })) as never, { session, ordered: true });
+                    await archive.bulkWrite(
+                        expired.map((document) => ({
+                            replaceOne: {
+                                filter: { _id: document._id },
+                                replacement: document as never,
+                                upsert: true,
+                            },
+                        })) as never,
+                        { session, ordered: true },
+                    );
                     const result = await source.deleteMany({ _id: { $in: ids } }, { session });
                     deletedInBatch = result.deletedCount;
                 });
@@ -64,7 +100,12 @@ export class HistoryArchiveService {
         }
     }
 
-    private readPositiveSetting(config: ConfigService, key: string, fallback: number, maximum = Number.MAX_SAFE_INTEGER): number {
+    private readPositiveSetting(
+        config: ConfigService,
+        key: string,
+        fallback: number,
+        maximum = Number.MAX_SAFE_INTEGER,
+    ): number {
         const raw = config.get<string>(key);
         if (raw === undefined) return fallback;
         if (!/^\d+$/.test(raw)) throw new Error(`${key} must be a positive integer.`);
