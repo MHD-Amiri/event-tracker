@@ -8,7 +8,9 @@
     "start:process": "nest start process --watch",
     "start:process:ingest": "PROCESS_ROLE=ingest nest start process --watch",
     "start:process:evaluate": "PROCESS_ROLE=evaluate nest start process --watch",
-    "start:agent": "nest start agent --watch"
+    "start:agent": "nest start agent --watch",
+    "test": "jest",
+    "test:watch": "jest --watch"
   },
   "repository": {
     "type": "git",
@@ -41,9 +43,14 @@
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
+    "@nestjs/testing": "^10.4.22",
     "@types/amqplib": "^0.10.8",
     "@types/ioredis": "^4.28.10",
+    "@types/jest": "^30.0.0",
     "@types/node": "^26.6.6",
+    "jest": "^30.5.2",
+    "mongodb-memory-server": "^11.3.0",
+    "ts-jest": "^29.4.15",
     "ts-loader": "^9.6.2",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
