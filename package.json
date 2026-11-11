@@ -9,7 +9,7 @@
     "start:process:ingest": "PROCESS_ROLE=ingest nest start process --watch",
     "start:process:evaluate": "PROCESS_ROLE=evaluate nest start process --watch",
     "start:agent": "nest start agent --watch",
-    "test": "jest",
+    "test": "jest --verbose",
     "test:watch": "jest --watch"
   },
   "repository": {
