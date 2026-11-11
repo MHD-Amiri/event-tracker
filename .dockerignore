@@ -1,0 +1,12 @@
+node_modules
+dist
+.git
+.agents
+.gapcode
+.aws
+.env
+.env.*
+!.sample.env
+npm-debug.log*
+coverage
+*.tsbuildinfo

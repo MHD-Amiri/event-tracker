@@ -1,34 +1,103 @@
-version: "3.8"
-
 services:
   rabbitmq:
     image: rabbitmq:3-management-alpine
-    container_name: event_tracker_rabbitmq
-    ports:
-      - "5672:5672" # AMQP protocol
-      - "15672:15672" # Web Management UI
     environment:
-      - RABBITMQ_DEFAULT_USER=guest
-      - RABBITMQ_DEFAULT_PASS=guest
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_DEFAULT_USER:-event_tracker}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_DEFAULT_PASS:-event_tracker_dev}
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MANAGEMENT_PORT:-15672}:15672"
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
     healthcheck:
       test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 12
+      start_period: 10s
 
   mongodb:
     image: mongo:6.0
-    container_name: event_tracker_mongodb
     ports:
-      - "27017:27017"
+      - "${MONGO_PORT:-27017}:27017"
     volumes:
       - mongo_data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
 
   redis:
     image: redis:7-alpine
-    container_name: event_tracker_redis
     ports:
-      - "6379:6379"
+      - "${REDIS_PORT:-6379}:6379"
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+
+  process:
+    build:
+      context: .
+      dockerfile: apps/process/Dockerfile
+    restart: unless-stopped
+    environment:
+      PROCESS_ROLE: ${PROCESS_ROLE:-both}
+      PORT: ${PORT:-3000}
+      MONGO_URI: mongodb://mongodb:27017/event_tracker
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-event_tracker}:${RABBITMQ_DEFAULT_PASS:-event_tracker_dev}@rabbitmq:5672
+      RMQ_INGESTION_QUEUE: ${RMQ_INGESTION_QUEUE:-events_queue}
+      RMQ_EVALUATION_QUEUE: ${RMQ_EVALUATION_QUEUE:-events_evaluation_queue}
+      RMQ_PREFETCH_COUNT: ${RMQ_PREFETCH_COUNT:-500}
+      RMQ_MAX_RETRIES: ${RMQ_MAX_RETRIES:-3}
+      RMQ_RETRY_DELAY_MS: ${RMQ_RETRY_DELAY_MS:-5000}
+      REDIS_RULES_TTL_SEC: ${REDIS_RULES_TTL_SEC:-3600}
+      REDIS_RANKING_TTL_SEC: ${REDIS_RANKING_TTL_SEC:-3600}
+      REPORT_MAX_WINDOW_HOURS: ${REPORT_MAX_WINDOW_HOURS:-24}
+    ports:
+      - "${PORT:-3000}:${PORT:-3000}"
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/').then(r => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
+
+  agent:
+    build:
+      context: .
+      dockerfile: apps/agent/Dockerfile
+    restart: unless-stopped
+    environment:
+      AGENT_ID: ${AGENT_ID:-agent-default-1}
+      AGENT_EMIT_INTERVAL_MS: ${AGENT_EMIT_INTERVAL_MS:-200}
+      RABBITMQ_URL: amqp://${RABBITMQ_DEFAULT_USER:-event_tracker}:${RABBITMQ_DEFAULT_PASS:-event_tracker_dev}@rabbitmq:5672
+      RMQ_INGESTION_QUEUE: ${RMQ_INGESTION_QUEUE:-events_queue}
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "try { process.kill(1, 0); process.exit(0) } catch { process.exit(1) }"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
 
 volumes:
+  rabbitmq_data:
   mongo_data:
+  redis_data:

@@ -38,25 +38,53 @@ A distributed event-tracking pipeline: simulated agents stream sensor events ove
 
 ## Quick start
 
-```bash
-# 1. Start infrastructure
-docker compose up -d
+### Run the full stack in containers
 
-# 2. Install dependencies
+```bash
+cp .sample.env .env
+docker compose up --build
+```
+
+Copy `.sample.env` first: Compose reads `.env` for its broker credentials, and
+the apps load `.env` for their connection settings. This keeps both sides on
+the same local RabbitMQ account.
+
+Compose builds the Agent and Process images and starts them after RabbitMQ,
+MongoDB, and Redis pass their health checks. The Process API is available at
+`http://localhost:3000`; RabbitMQ management is at `http://localhost:15672`.
+Use distinct `AGENT_ID` values when scaling agents. The sample broker password
+is for local development; replace it before exposing the broker outside your
+machine. Persistent named volumes retain RabbitMQ, MongoDB, and Redis data.
+
+Stop the stack with `docker compose down`; add `-v` only when intentionally
+deleting its persisted data.
+
+### Run services locally
+
+```bash
+# 1. Required: configure both Compose and the local apps with matching broker credentials
+cp .sample.env .env
+
+# 2. Start only the infrastructure containers (not the Agent or Process apps)
+docker compose up -d rabbitmq mongodb redis
+
+# 3. Install dependencies
 npm install
 
-# 3. Start the process service (both consumers + HTTP API on :3000)
+# 4. In one terminal, start the Process app (consumers + HTTP API on :3000)
 npm run start:process
 
-# 4. In another terminal, start a sensor agent
+# 5. In another terminal, start a sensor Agent
 npm run start:agent
 ```
 
-Configuration is env-driven with sensible localhost defaults — no `.env` needed for local dev:
+The Compose command above names only RabbitMQ, MongoDB, and Redis, so the apps run on the host through the `start:process` and `start:agent` scripts. Stop the infrastructure with `docker compose down` when finished.
 
-| Variable | Default | Used by |
+Configuration is env-driven. The table shows `.sample.env` values; copy that file to `.env` before starting the stack:
+
+| Variable | Sample value | Used by |
 |---|---|---|
-| `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672` | agent + process (`RABBITMQ_URI` is a deprecated alias) |
+| `RABBITMQ_URL` | `amqp://event_tracker:event_tracker_dev@localhost:5672` | agent + process (`RABBITMQ_URI` is a deprecated alias) |
 | `RMQ_MAX_RETRIES` | `3` | process consumers; retries after initial delivery before DLQ |
 | `RMQ_RETRY_DELAY_MS` | `5000` | process consumers; delay before retry |
 | `MONGO_URI` | `mongodb://localhost:27017/event_tracker` | process |
@@ -197,4 +225,4 @@ npx tsc -p apps/process/tsconfig.app.json --noEmit   # type check process
 npx tsc -p apps/agent/tsconfig.app.json --noEmit     # type check agent
 ```
 
-Monitoring: RabbitMQ management UI at http://localhost:15672 (guest/guest) — watch queue depth on `events_evaluation_queue` to see evaluation backpressure in real time.
+Monitoring: RabbitMQ management UI at http://localhost:15672 (credentials from `RABBITMQ_DEFAULT_USER` / `RABBITMQ_DEFAULT_PASS`, `event_tracker` / `event_tracker_dev` by default) — watch queue depth on `events_evaluation_queue` to see evaluation backpressure in real time.
