@@ -126,7 +126,7 @@ describe('process bootstrap deployment roles', () => {
     });
 
     it('logs a clear startup error and exits unsuccessfully when bootstrap rejects', async () => {
-        const errorLog = jest.spyOn(Logger, 'error').mockImplementation(() => undefined);
+        const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
         const error = new Error('broker initialization failed');
         create.mockRejectedValueOnce(error);
 
@@ -134,14 +134,12 @@ describe('process bootstrap deployment roles', () => {
 
         expect(errorLog).toHaveBeenCalledWith(
             'Process startup failed: Error: broker initialization failed',
-            undefined,
-            'ProcessBootstrap',
         );
         expect(process.exitCode).toBe(1);
     });
 
     it('logs circular rejection details without throwing from the error handler', async () => {
-        const errorLog = jest.spyOn(Logger, 'error').mockImplementation(() => undefined);
+        const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
         const error: Record<string, unknown> = {};
         error.cause = error;
         create.mockRejectedValueOnce(error);
@@ -150,8 +148,6 @@ describe('process bootstrap deployment roles', () => {
 
         expect(errorLog).toHaveBeenCalledWith(
             'Process startup failed: [unserializable error details]',
-            undefined,
-            'ProcessBootstrap',
         );
         expect(process.exitCode).toBe(1);
     });

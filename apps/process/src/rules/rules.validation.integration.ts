@@ -1,22 +1,22 @@
 import { plainToInstance } from 'class-transformer';
 import { validate } from 'class-validator';
 import mongoose from 'mongoose';
-import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { RedisService } from '../redis/redis.service';
 import { CreateRuleDto } from './dto/create-rule.dto';
 import { UpdateRuleDto } from './dto/update-rule.dto';
 import { Rule, RuleSchema, RuleOperator } from './schemas/rule.schema';
 import { RulesService } from './rules.service';
+import { MongoTestConnection, openMongoTestConnection } from '../../test/mongo-test-connection';
 
 describe('Rules validation', () => {
-    let replicaSet: MongoMemoryReplSet;
+    let mongo: MongoTestConnection;
     let connection: mongoose.Connection;
     let service: RulesService;
     let model: mongoose.Model<Rule>;
 
     beforeAll(async () => {
-        replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-        connection = await mongoose.createConnection(replicaSet.getUri()).asPromise();
+        mongo = await openMongoTestConnection('event_tracker_rules_validation_test');
+        connection = mongo.connection;
         model = connection.model(Rule.name, RuleSchema);
         await model.init();
         service = new RulesService(
@@ -26,8 +26,7 @@ describe('Rules validation', () => {
     }, 60_000);
 
     afterAll(async () => {
-        await connection?.close();
-        await replicaSet?.stop();
+        await mongo?.close();
     });
 
     beforeEach(async () => {

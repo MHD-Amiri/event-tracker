@@ -1,5 +1,4 @@
 import mongoose from 'mongoose';
-import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { ConfigService } from '@nestjs/config';
 import {
     ArchivedEvent,
@@ -17,9 +16,10 @@ import { RuleAgentCount, RuleAgentCountSchema } from '../ranking/rule-agent-coun
 import { RankingService } from '../ranking/ranking.service';
 import { ReportsService } from '../reports/reports.service';
 import { HistoryArchiveService } from './history-archive.service';
+import { MongoTestConnection, openMongoTestConnection } from '../../test/mongo-test-connection';
 
 describe('History archival', () => {
-    let replicaSet: MongoMemoryReplSet;
+    let mongo: MongoTestConnection;
     let connection: mongoose.Connection;
     let events: mongoose.Model<Event>;
     let eventsArchive: mongoose.Model<Event>;
@@ -30,8 +30,8 @@ describe('History archival', () => {
     const ruleId = new mongoose.Types.ObjectId();
 
     beforeAll(async () => {
-        replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-        connection = await mongoose.createConnection(replicaSet.getUri()).asPromise();
+        mongo = await openMongoTestConnection('event_tracker_archive_test');
+        connection = mongo.connection;
         events = connection.model(Event.name, EventSchema);
         eventsArchive = connection.model(ArchivedEvent.name, ArchivedEventSchema);
         matches = connection.model(MatchedEvent.name, MatchedEventSchema);
@@ -47,8 +47,7 @@ describe('History archival', () => {
     }, 60_000);
 
     afterAll(async () => {
-        await connection?.close();
-        await replicaSet?.stop();
+        await mongo?.close();
     });
 
     beforeEach(async () => {

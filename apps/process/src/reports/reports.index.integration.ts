@@ -1,24 +1,23 @@
 import mongoose from 'mongoose';
-import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import {
     ArchivedMatchedEvent,
     ArchivedMatchedEventSchema,
     MatchedEvent,
     MatchedEventSchema,
 } from '../rules/schemas/matched-event.schema';
+import { MongoTestConnection, openMongoTestConnection } from '../../test/mongo-test-connection';
 
 describe('API A matched-event index', () => {
-    let replicaSet: MongoMemoryReplSet;
+    let mongo: MongoTestConnection;
     let connection: mongoose.Connection;
 
     beforeAll(async () => {
-        replicaSet = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
-        connection = await mongoose.createConnection(replicaSet.getUri()).asPromise();
+        mongo = await openMongoTestConnection('event_tracker_reports_index_test');
+        connection = mongo.connection;
     }, 60_000);
 
     afterAll(async () => {
-        await connection?.close();
-        await replicaSet?.stop();
+        await mongo?.close();
     });
 
     it('uses the compound rule/time/event index for the bounded keyset page', async () => {

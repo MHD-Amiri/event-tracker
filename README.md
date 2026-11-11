@@ -16,13 +16,13 @@ A distributed event-tracking pipeline: simulated agents stream sensor events ove
 
 ## Architecture
 
-| Component | Role |
-|---|---|
-| **Agent** (`apps/agent`) | Standalone worker emitting simulated sensor events (~5/sec) to `events_queue` |
+| Component                    | Role                                                                                                                                                            |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Agent** (`apps/agent`)     | Standalone worker emitting simulated sensor events (~5/sec) to `events_queue`                                                                                   |
 | **Process** (`apps/process`) | NestJS monolith: ingestion consumer, rule-evaluation consumer, REST API. Deployable as one process or split by role (see [Scaling](#scaling--deployment-roles)) |
-| **RabbitMQ** | Two durable queues — decouples ingestion from evaluation, buffers failures |
-| **MongoDB** | Source of truth: `events`, `rules`, `matched_events`, and durable `rule_agent_counts` collections; run as a replica set for atomic Match/count writes |
-| **Redis** | 1-hour TTL cache for the active Rule set |
+| **RabbitMQ**                 | Two durable queues — decouples ingestion from evaluation, buffers failures                                                                                      |
+| **MongoDB**                  | Source of truth: `events`, `rules`, `matched_events`, and durable `rule_agent_counts` collections; run as a replica set for atomic Match/count writes           |
+| **Redis**                    | 1-hour TTL cache for the active Rule set                                                                                                                        |
 
 ### Message flow
 
@@ -82,18 +82,18 @@ The Compose command above names only RabbitMQ, MongoDB, and Redis, so the apps r
 
 Configuration is env-driven. The table shows `.sample.env` values; copy that file to `.env` before starting the stack:
 
-| Variable | Sample value | Used by |
-|---|---|---|
-| `RABBITMQ_URL` | `amqp://event_tracker:event_tracker_dev@localhost:5672` | agent + process (`RABBITMQ_URI` is a deprecated alias) |
-| `RMQ_MAX_RETRIES` | `3` | process consumers; retries after initial delivery before DLQ |
-| `RMQ_RETRY_DELAY_MS` | `5000` | process consumers; delay before retry |
-| `MONGO_URI` | `mongodb://localhost:27017/event_tracker?replicaSet=rs0` | process |
-| `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | process |
-| `PORT` | `3000` | process HTTP |
-| `PROCESS_ROLE` | `both` | process deployment role |
-| `AGENT_ID` | `agent-default-1` | agent identifier |
-| `HISTORY_RETENTION_DAYS` | `90` | live event/Match history age before archival |
-| `HISTORY_ARCHIVE_BATCH_SIZE` | `200` | records moved per transaction (maximum 1,000) |
+| Variable                     | Sample value                                             | Used by                                                      |
+| ---------------------------- | -------------------------------------------------------- | ------------------------------------------------------------ |
+| `RABBITMQ_URL`               | `amqp://event_tracker:event_tracker_dev@localhost:5672`  | agent + process (`RABBITMQ_URI` is a deprecated alias)       |
+| `RMQ_MAX_RETRIES`            | `3`                                                      | process consumers; retries after initial delivery before DLQ |
+| `RMQ_RETRY_DELAY_MS`         | `5000`                                                   | process consumers; delay before retry                        |
+| `MONGO_URI`                  | `mongodb://localhost:27017/event_tracker?replicaSet=rs0` | process                                                      |
+| `REDIS_HOST` / `REDIS_PORT`  | `localhost` / `6379`                                     | process                                                      |
+| `PORT`                       | `3000`                                                   | process HTTP                                                 |
+| `PROCESS_ROLE`               | `both`                                                   | process deployment role                                      |
+| `AGENT_ID`                   | `agent-default-1`                                        | agent identifier                                             |
+| `HISTORY_RETENTION_DAYS`     | `90`                                                     | live event/Match history age before archival                 |
+| `HISTORY_ARCHIVE_BATCH_SIZE` | `200`                                                    | records moved per transaction (maximum 1,000)                |
 
 ## Walkthrough: from zero to a report
 
@@ -114,12 +114,12 @@ curl -X POST http://localhost:3000/rules \
 
 ```json
 {
-  "_id": "682f9f2a1c9d3e4f5a6b7c8d",
-  "name": "High temperature",
-  "eventName": "temperature",
-  "operator": ">",
-  "value": 80,
-  "isActive": true
+    "_id": "682f9f2a1c9d3e4f5a6b7c8d",
+    "name": "High temperature",
+    "eventName": "temperature",
+    "operator": ">",
+    "value": 80,
+    "isActive": true
 }
 ```
 
@@ -140,9 +140,7 @@ curl http://localhost:3000/reports/rules/682f9f2a1c9d3e4f5a6b7c8d/ranking
 ```
 
 ```json
-[
-  { "agentId": "agent-default-1", "totalMatches": 342 }
-]
+[{ "agentId": "agent-default-1", "totalMatches": 342 }]
 ```
 
 The ranking endpoint reads the indexed `rule_agent_counts` projection, so requests do not scan Match history and reflect committed counts immediately.
@@ -164,22 +162,22 @@ Run multiple agents to make the ranking interesting: `AGENT_ID=agent-2 npm run s
 
 ### Rules — `/rules`
 
-| Method | Path | Body | Notes |
-|---|---|---|---|
-| `POST` | `/rules` | `CreateRuleDto` | |
-| `GET` | `/rules` | optional `page` (default 1), `limit` (default 20, max 100) | Returns `{ items, total, page, limit, totalPages }`; sorted by stable Rule ID order |
-| `GET` | `/rules/:id` | — | 404 if unknown |
-| `PUT` | `/rules/:id` | `UpdateRuleDto` | partial update |
-| `DELETE` | `/rules/:id` | — | `{ success: true }` |
+| Method   | Path         | Body                                                       | Notes                                                                               |
+| -------- | ------------ | ---------------------------------------------------------- | ----------------------------------------------------------------------------------- |
+| `POST`   | `/rules`     | `CreateRuleDto`                                            |                                                                                     |
+| `GET`    | `/rules`     | optional `page` (default 1), `limit` (default 20, max 100) | Returns `{ items, total, page, limit, totalPages }`; sorted by stable Rule ID order |
+| `GET`    | `/rules/:id` | —                                                          | 404 if unknown                                                                      |
+| `PUT`    | `/rules/:id` | `UpdateRuleDto`                                            | partial update                                                                      |
+| `DELETE` | `/rules/:id` | —                                                          | `{ success: true }`                                                                 |
 
 `operator` is one of `==`, `!=`, `>`, `>=`, `<`, `<=`. All bodies are validated (whitelist + strict DTO — unknown fields are rejected with 400).
 
 ### Reports — `/reports`
 
-| Method | Path | Query | Notes |
-|---|---|---|---|
-| `GET` | `/reports/rules/:ruleId/timestamps` | `start`, `end` (ISO 8601), optional `limit` (1–500, default 100), optional opaque `cursor` | Window must be ≤ 24h, `start ≤ end`. Returns `{ items: [{ agentId, count, matchedAt }], limit, nextCursor }`; counts/timestamps are for that page. Pass `nextCursor` to fetch the next stable page. |
-| `GET` | `/reports/rules/:ruleId/ranking` | — | All-time per-agent match counts from the durable projection, descending |
+| Method | Path                                | Query                                                                                      | Notes                                                                                                                                                                                               |
+| ------ | ----------------------------------- | ------------------------------------------------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `GET`  | `/reports/rules/:ruleId/timestamps` | `start`, `end` (ISO 8601), optional `limit` (1–500, default 100), optional opaque `cursor` | Window must be ≤ 24h, `start ≤ end`. Returns `{ items: [{ agentId, count, matchedAt }], limit, nextCursor }`; counts/timestamps are for that page. Pass `nextCursor` to fetch the next stable page. |
+| `GET`  | `/reports/rules/:ruleId/ranking`    | —                                                                                          | All-time per-agent match counts from the durable projection, descending                                                                                                                             |
 
 Both validate `ruleId` (400 on malformed ObjectId) and return 400 with a clear message on invalid input.
 
@@ -187,11 +185,11 @@ Both validate `ruleId` (400 on malformed ObjectId) and return 400 with a clear m
 
 The same process codebase deploys in three topologies via `PROCESS_ROLE`:
 
-| Role | Consumes | Serves | Use when |
-|---|---|---|---|
-| `both` (default) | both queues | HTTP | local dev, single instance |
-| `ingest` | `events_queue` | HTTP | scale ingestion + API tier |
-| `evaluate` | `events_evaluation_queue` | — (no HTTP port) | scale evaluation workers independently |
+| Role             | Consumes                  | Serves           | Use when                               |
+| ---------------- | ------------------------- | ---------------- | -------------------------------------- |
+| `both` (default) | both queues               | HTTP             | local dev, single instance             |
+| `ingest`         | `events_queue`            | HTTP             | scale ingestion + API tier             |
+| `evaluate`       | `events_evaluation_queue` | — (no HTTP port) | scale evaluation workers independently |
 
 ```bash
 npm run start:process:ingest       # PROCESS_ROLE=ingest
@@ -221,10 +219,34 @@ RabbitMQ round-robins each queue across all its consumers, so scaling the evalua
 **Collection naming.** `matched_events` (and `events`) are declared explicitly in the schema — Mongoose would otherwise pluralize the class name into `matchedevents`.
 
 **Known trade-offs / future work:**
+
 - DLQ replay is an operator action; add an authenticated replay tool before relying on unattended recovery in production
 - Report queries are unauthenticated; add auth before exposing beyond localhost
 
 ## Development
+
+Run the unit tests with:
+
+```bash
+npm run test
+```
+
+The default test command is self-contained and does not start MongoDB or
+download a database binary. Mongo-backed integration suites are separate and
+run only when explicitly requested with `npm run test:integration`; they
+require a disposable MongoDB replica set supplied through `MONGO_TEST_URI`.
+
+PowerShell:
+
+```powershell
+docker compose up -d mongodb
+$env:MONGO_TEST_URI = "mongodb://localhost:27017/?replicaSet=rs0"
+npm run test:integration
+Remove-Item Env:MONGO_TEST_URI
+```
+
+Each integration suite uses and drops its own test database. Do not point
+`MONGO_TEST_URI` at a database containing data you need to keep.
 
 ```bash
 npx tsc -p apps/process/tsconfig.app.json --noEmit   # type check process

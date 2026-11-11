@@ -5,5 +5,5 @@
     "outDir": "../../dist/apps/process"
   },
   "include": ["src/**/*"],
-  "exclude": ["src/**/*.spec.ts"]
+  "exclude": ["src/**/*.spec.ts", "src/**/*.integration.ts"]
 }
