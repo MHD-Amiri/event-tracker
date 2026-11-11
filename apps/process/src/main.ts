@@ -3,11 +3,6 @@ import { ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { consumerMicroservice, queueNames, type ConfigReader } from '@app/rmq';
 
-// Deployment role: 'both' (default, single-process dev setup), 'ingest'
-// (events_queue consumer + HTTP + report APIs), or 'evaluate'
-// (events_evaluation_queue consumer only — scale this tier independently)
-const role = process.env.PROCESS_ROLE || 'both';
-
 // Bootstrap runs outside the DI container, so it can't inject ConfigService.
 // ConfigModule.forRoot() (in app.module.ts, evaluated before this function runs)
 // has already copied .env values into process.env, so a read-through adapter
@@ -19,7 +14,10 @@ const env: ConfigReader = {
     },
 };
 
-async function bootstrap() {
+// Deployment role: 'both' (default, single-process dev setup), 'ingest'
+// (events_queue consumer + HTTP + report APIs), or 'evaluate'
+// (events_evaluation_queue consumer only — scale this tier independently)
+export async function bootstrap(role = process.env.PROCESS_ROLE || 'both') {
     const app = await NestFactory.create(AppModule);
 
     // Global validation pipe for upcoming Rules API
@@ -54,4 +52,7 @@ async function bootstrap() {
         console.log(`📡 [role: ${role}] Pure evaluation worker — listening to RabbitMQ: '${queues.evaluation}'`);
     }
 }
-bootstrap();
+
+if (require.main === module) {
+    void bootstrap();
+}
