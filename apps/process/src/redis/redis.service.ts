@@ -3,6 +3,18 @@ import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
 const RULES_CACHE_KEY = 'active_rules';
+const RULES_CACHE_VERSION_KEY = 'active_rules:version';
+const SET_RULES_IF_VERSION_MATCHES = `
+    if redis.call('GET', KEYS[1]) == ARGV[1] or
+       (not redis.call('GET', KEYS[1]) and ARGV[1] == '0') then
+        return redis.call('SET', KEYS[2], ARGV[2], 'EX', ARGV[3])
+    end
+    return 0
+`;
+const INVALIDATE_RULES_CACHE = `
+    redis.call('INCR', KEYS[1])
+    return redis.call('DEL', KEYS[2])
+`;
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
@@ -79,13 +91,25 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return data ? JSON.parse(data) : null;
     }
 
-    async setCachedRules(rules: any[]): Promise<void> {
-        // Cached until TTL expiry or explicit invalidation on rule changes
-        await this.client.set(this.RULES_CACHE_KEY, JSON.stringify(rules), 'EX', this.rulesTtl);
+    async getRulesCacheVersion(): Promise<string> {
+        return (await this.client.get(RULES_CACHE_VERSION_KEY)) ?? '0';
+    }
+
+    async setCachedRules(rules: any[], expectedVersion: string): Promise<boolean> {
+        const result = await this.client.eval(
+            SET_RULES_IF_VERSION_MATCHES,
+            2,
+            RULES_CACHE_VERSION_KEY,
+            this.RULES_CACHE_KEY,
+            expectedVersion,
+            JSON.stringify(rules),
+            String(this.rulesTtl),
+        );
+        return result === 'OK';
     }
 
     async invalidateRulesCache(): Promise<void> {
-        await this.client.del(this.RULES_CACHE_KEY);
+        await this.client.eval(INVALIDATE_RULES_CACHE, 2, RULES_CACHE_VERSION_KEY, this.RULES_CACHE_KEY);
     }
 
 }

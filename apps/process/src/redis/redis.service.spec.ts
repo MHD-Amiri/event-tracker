@@ -6,6 +6,7 @@ const mockRedisClient = {
     get: jest.fn(),
     set: jest.fn(),
     del: jest.fn(),
+    eval: jest.fn(),
     disconnect: jest.fn(),
     connect: jest.fn(),
     on: jest.fn(),
@@ -35,6 +36,7 @@ describe('RedisService', () => {
         mockRedisClient.get.mockResolvedValue(null);
         mockRedisClient.set.mockResolvedValue('OK');
         mockRedisClient.del.mockResolvedValue(1);
+        mockRedisClient.eval.mockResolvedValue('OK');
         mockRedisClient.disconnect.mockReturnValue(undefined);
         mockRedisClient.connect.mockResolvedValue(undefined);
         mockRedisClient.on.mockReturnValue(mockRedisClient);
@@ -52,18 +54,33 @@ describe('RedisService', () => {
     });
 
     it('serializes and restores active Rules using the rules key and configured TTL', async () => {
-        await service.setCachedRules(rules);
-        expect(mockRedisClient.set).toHaveBeenCalledWith('active_rules', JSON.stringify(rules), 'EX', 3600);
+        await expect(service.getRulesCacheVersion()).resolves.toBe('0');
+        expect(mockRedisClient.get).toHaveBeenCalledWith('active_rules:version');
+        await service.setCachedRules(rules, '0');
+        expect(mockRedisClient.eval).toHaveBeenCalledWith(
+            expect.stringContaining("redis.call('SET'"),
+            2,
+            'active_rules:version',
+            'active_rules',
+            '0',
+            JSON.stringify(rules),
+            '3600',
+        );
 
         mockRedisClient.get.mockResolvedValueOnce(JSON.stringify(rules));
         await expect(service.getCachedRules()).resolves.toEqual(rules);
         expect(mockRedisClient.get).toHaveBeenCalledWith('active_rules');
     });
 
-    it('invalidates the active Rule cache key', async () => {
+    it('atomically advances the cache version and invalidates the active Rule key', async () => {
         await service.invalidateRulesCache();
 
-        expect(mockRedisClient.del).toHaveBeenCalledWith('active_rules');
+        expect(mockRedisClient.eval).toHaveBeenCalledWith(
+            expect.stringContaining("redis.call('INCR'"),
+            2,
+            'active_rules:version',
+            'active_rules',
+        );
     });
 
     it.each([undefined, 'invalid', '0', '-5'])(
@@ -71,14 +88,10 @@ describe('RedisService', () => {
         async (configuredTtl) => {
             const customService = createService({ REDIS_RULES_TTL_SEC: configuredTtl });
 
-            await customService.setCachedRules(rules);
+            await customService.setCachedRules(rules, '0');
 
-            expect(mockRedisClient.set).toHaveBeenNthCalledWith(
-                1,
-                'active_rules',
-                JSON.stringify(rules),
-                'EX',
-                3600,
+            expect(mockRedisClient.eval).toHaveBeenCalledWith(
+                expect.any(String), 2, 'active_rules:version', 'active_rules', '0', JSON.stringify(rules), '3600',
             );
             customService.onModuleDestroy();
         },

@@ -32,6 +32,7 @@ function describeStartupError(error: unknown, seen = new WeakSet<object>()): str
 export async function bootstrap() {
     try {
         const app = await NestFactory.createApplicationContext(AppModule);
+        app.enableShutdownHooks();
         logger.log('Agent service initialized successfully.');
         return app;
     } catch (error) {

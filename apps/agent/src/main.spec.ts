@@ -24,6 +24,15 @@ describe('agent bootstrap', () => {
         expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('RABBITMQ_URL'));
     });
 
+    it('enables Nest shutdown hooks after creating the application context', async () => {
+        const app = { enableShutdownHooks: jest.fn() };
+        createApplicationContext.mockResolvedValueOnce(app);
+
+        await expect(bootstrap()).resolves.toBe(app);
+
+        expect(app.enableShutdownHooks).toHaveBeenCalledTimes(1);
+    });
+
     it('formats circular startup details without masking the original error', async () => {
         const error: Record<string, unknown> = { code: 'ACCESS_REFUSED' };
         error.cause = error;

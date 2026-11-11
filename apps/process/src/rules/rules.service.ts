@@ -72,11 +72,12 @@ export class RulesService {
     // this interface; administration writes above invalidate what it reads.
 
     async getActiveRules(): Promise<Rule[]> {
+        const cacheVersion = await this.redisService.getRulesCacheVersion();
         const cached = await this.redisService.getCachedRules();
         if (cached) return cached;
 
         const activeRules = await this.ruleModel.find({ isActive: true }).lean();
-        await this.redisService.setCachedRules(activeRules);
+        await this.redisService.setCachedRules(activeRules, cacheVersion);
         return activeRules;
     }
 

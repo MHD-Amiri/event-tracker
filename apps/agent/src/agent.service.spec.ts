@@ -5,6 +5,7 @@ import { faker } from '@faker-js/faker';
 import * as rmq from '@app/rmq';
 import { AgentService } from './agent.service';
 import { SensorEventMessage } from './sensor-event.interface';
+import { of, Subject, throwError } from 'rxjs';
 
 jest.mock('@app/rmq', () => ({
     ...jest.requireActual('@app/rmq'),
@@ -37,15 +38,15 @@ describe('AgentService', () => {
         client = {
             connect: jest.fn().mockResolvedValue(undefined),
             close: jest.fn(),
-            emit: jest.fn(),
+            emit: jest.fn().mockReturnValue(of(undefined)),
         };
         config = createConfig();
         clientProxyMock.mockReturnValue(client as unknown as ClientProxy);
         service = new AgentService(config);
     });
 
-    afterEach(() => {
-        service?.onModuleDestroy();
+    afterEach(async () => {
+        await service?.onModuleDestroy();
         jest.useRealTimers();
         jest.restoreAllMocks();
     });
@@ -119,10 +120,50 @@ describe('AgentService', () => {
         await jest.advanceTimersByTimeAsync(200);
         expect(client.emit).toHaveBeenCalledTimes(1);
 
-        service.onModuleDestroy();
+        await service.onModuleDestroy();
         await jest.advanceTimersByTimeAsync(1000);
 
         expect(client.close).toHaveBeenCalledTimes(1);
         expect(client.emit).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs broker publish failures with the event identifier', async () => {
+        const errorLog = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
+        client.emit.mockReturnValueOnce(throwError(() => new Error('broker disconnected')));
+        await service.onModuleInit();
+
+        await jest.advanceTimersByTimeAsync(200);
+
+        const [, message] = client.emit.mock.calls[0] as [string, SensorEventMessage];
+        expect(errorLog).toHaveBeenCalledWith(expect.stringContaining(`eventId=${message.eventId}`));
+        expect(errorLog).toHaveBeenCalledWith(expect.stringContaining('broker disconnected'));
+    });
+
+    it('does not overlap publishes when the broker observable is still pending', async () => {
+        const pendingPublish = new Subject<void>();
+        client.emit.mockReturnValueOnce(pendingPublish).mockReturnValue(of(undefined));
+        await service.onModuleInit();
+
+        await jest.advanceTimersByTimeAsync(600);
+        expect(client.emit).toHaveBeenCalledTimes(1);
+
+        pendingPublish.complete();
+        await Promise.resolve();
+        await jest.advanceTimersByTimeAsync(200);
+        expect(client.emit).toHaveBeenCalledTimes(2);
+    });
+
+    it('waits for an in-flight publish before closing on shutdown', async () => {
+        const pendingPublish = new Subject<void>();
+        client.emit.mockReturnValueOnce(pendingPublish);
+        await service.onModuleInit();
+        await jest.advanceTimersByTimeAsync(200);
+
+        const shutdown = service.onModuleDestroy();
+        expect(client.close).not.toHaveBeenCalled();
+        pendingPublish.complete();
+        await shutdown;
+
+        expect(client.close).toHaveBeenCalledTimes(1);
     });
 });

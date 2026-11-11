@@ -19,6 +19,7 @@ const env: ConfigReader = {
 // (events_evaluation_queue consumer only — scale this tier independently)
 export async function bootstrap(role = process.env.PROCESS_ROLE || 'both') {
     const app = await NestFactory.create(AppModule);
+    app.enableShutdownHooks();
 
     // Global validation pipe for upcoming Rules API
     app.useGlobalPipes(

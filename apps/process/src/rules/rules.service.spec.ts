@@ -35,6 +35,7 @@ describe('RulesService', () => {
     let redis: {
         invalidateRulesCache: jest.Mock;
         getCachedRules: jest.Mock;
+        getRulesCacheVersion: jest.Mock;
         setCachedRules: jest.Mock;
     };
     let service: RulesService;
@@ -57,6 +58,7 @@ describe('RulesService', () => {
         redis = {
             invalidateRulesCache: jest.fn().mockResolvedValue(undefined),
             getCachedRules: jest.fn().mockResolvedValue(null),
+            getRulesCacheVersion: jest.fn().mockResolvedValue('0'),
             setCachedRules: jest.fn().mockResolvedValue(undefined),
         };
         service = new RulesService(
@@ -197,7 +199,7 @@ describe('RulesService', () => {
             await expect(service.getActiveRules()).resolves.toBe(activeRules);
 
             expect(model.find).toHaveBeenCalledWith({ isActive: true });
-            expect(redis.setCachedRules).toHaveBeenCalledWith(activeRules);
+            expect(redis.setCachedRules).toHaveBeenCalledWith(activeRules, '0');
         });
 
         it('caches and returns an empty result when no Rules are active', async () => {
@@ -206,7 +208,7 @@ describe('RulesService', () => {
             await expect(service.getActiveRules()).resolves.toEqual([]);
 
             expect(model.find).toHaveBeenCalledWith({ isActive: true });
-            expect(redis.setCachedRules).toHaveBeenCalledWith([]);
+            expect(redis.setCachedRules).toHaveBeenCalledWith([], '0');
         });
 
         it('returns a cached empty result without querying Mongo', async () => {
@@ -216,6 +218,26 @@ describe('RulesService', () => {
 
             expect(model.find).not.toHaveBeenCalled();
             expect(redis.setCachedRules).not.toHaveBeenCalled();
+        });
+
+        it('does not let a slow pre-mutation read overwrite the cache after invalidation', async () => {
+            let resolveRules!: (rules: Rule[]) => void;
+            let cacheVersion = '0';
+            findLean.mockReturnValue(new Promise<Rule[]>((resolve) => { resolveRules = resolve; }));
+            redis.getRulesCacheVersion.mockImplementation(async () => cacheVersion);
+            redis.invalidateRulesCache.mockImplementation(async () => { cacheVersion = '1'; });
+            redis.setCachedRules.mockImplementation(async (_rules: Rule[], version: string) => version === cacheVersion);
+
+            const staleRead = service.getActiveRules();
+            await Promise.resolve();
+            await Promise.resolve();
+            expect(model.find).toHaveBeenCalledWith({ isActive: true });
+            await service.create(createDto);
+            resolveRules([createdRule] as Rule[]);
+
+            await expect(staleRead).resolves.toEqual([createdRule]);
+            expect(redis.setCachedRules).toHaveBeenCalledWith([createdRule], '0');
+            await expect(redis.setCachedRules.mock.results[0].value).resolves.toBe(false);
         });
     });
 });

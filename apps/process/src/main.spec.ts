@@ -18,6 +18,7 @@ describe('process bootstrap deployment roles', () => {
     let originalEnv: Record<string, string | undefined>;
     let originalExitCode: typeof process.exitCode;
     let app: {
+        enableShutdownHooks: jest.Mock;
         useGlobalPipes: jest.Mock;
         connectMicroservice: jest.Mock;
         startAllMicroservices: jest.Mock;
@@ -38,6 +39,7 @@ describe('process bootstrap deployment roles', () => {
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
 
         app = {
+            enableShutdownHooks: jest.fn(),
             useGlobalPipes: jest.fn(),
             connectMicroservice: jest.fn(),
             startAllMicroservices: jest.fn().mockResolvedValue(undefined),
@@ -59,6 +61,7 @@ describe('process bootstrap deployment roles', () => {
     it('starts both queues and the HTTP server for the both role', async () => {
         await bootstrap('both');
 
+        expect(app.enableShutdownHooks).toHaveBeenCalledTimes(1);
         expect(app.connectMicroservice).toHaveBeenCalledTimes(2);
         expect(app.connectMicroservice).toHaveBeenNthCalledWith(1, {
             transport: Transport.RMQ,
