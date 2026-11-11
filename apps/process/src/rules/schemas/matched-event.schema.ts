@@ -58,8 +58,13 @@ export const MatchedEventSchema = SchemaFactory.createForClass(MatchedEvent);
 MatchedEventSchema.index({ ruleId: 1, matchedAt: 1, eventId: 1 });
 // Compound index for Agent Ranking query
 MatchedEventSchema.index({ agentId: 1, matchedAt: -1 });
+MatchedEventSchema.index({ matchedAt: 1 });
 // Partial filter keeps legacy rows without eventId indexable during rollout.
 MatchedEventSchema.index(
     { ruleId: 1, eventId: 1 },
     { unique: true, partialFilterExpression: { eventId: { $type: 'string' } } },
 );
+
+export class ArchivedMatchedEvent extends MatchedEvent { }
+export const ArchivedMatchedEventSchema = MatchedEventSchema.clone();
+ArchivedMatchedEventSchema.set('collection', 'matched_events_archive');

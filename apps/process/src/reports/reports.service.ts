@@ -69,11 +69,23 @@ export class ReportsService {
             ];
         }
 
-        const rows = await this.matchedEventModel.find(filter)
-            .select({ agentId: 1, matchedAt: 1, eventId: 1 })
-            .sort({ matchedAt: 1, eventId: 1 })
-            .limit(pageSize + 1)
-            .lean() as TimestampRow[];
+        const pageQuery = [
+            { $match: filter },
+            { $sort: { matchedAt: 1 as const, eventId: 1 as const } },
+            { $limit: pageSize + 1 },
+        ];
+        const rows = await this.matchedEventModel.aggregate([
+            ...pageQuery,
+            {
+                $unionWith: {
+                    coll: 'matched_events_archive',
+                    pipeline: pageQuery,
+                },
+            },
+            { $sort: { matchedAt: 1, eventId: 1 } },
+            { $limit: pageSize + 1 },
+            { $project: { _id: 0, eventId: 1, agentId: 1, matchedAt: 1 } },
+        ]) as TimestampRow[];
 
         const hasMore = rows.length > pageSize;
         const page = rows.slice(0, pageSize);

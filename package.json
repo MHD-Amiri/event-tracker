@@ -10,6 +10,7 @@
     "start:process:evaluate": "PROCESS_ROLE=evaluate nest start process --watch",
     "start:agent": "nest start agent --watch",
     "rebuild:rankings": "npm run build && node dist/apps/process/src/rebuild-rankings.js",
+    "archive:history": "npm run build && node dist/apps/process/src/archive-history.js",
     "test": "jest --verbose",
     "test:watch": "jest --watch"
   },

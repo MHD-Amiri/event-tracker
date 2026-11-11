@@ -92,6 +92,8 @@ Configuration is env-driven. The table shows `.sample.env` values; copy that fil
 | `PORT` | `3000` | process HTTP |
 | `PROCESS_ROLE` | `both` | process deployment role |
 | `AGENT_ID` | `agent-default-1` | agent identifier |
+| `HISTORY_RETENTION_DAYS` | `90` | live event/Match history age before archival |
+| `HISTORY_ARCHIVE_BATCH_SIZE` | `200` | records moved per transaction (maximum 1,000) |
 
 ## Walkthrough: from zero to a report
 
@@ -209,6 +211,8 @@ RabbitMQ round-robins each queue across all its consumers, so scaling the evalua
 **Mongo is the source of truth; Redis is disposable.** Redis caches only active Rules; flushing it degrades performance, never correctness. API B reads durable Mongo counters and does not depend on Redis.
 
 **Durable ranking projection.** Each Match and its per-rule/per-agent count increment commit in one Mongo transaction. The `(ruleId, agentId)` counter index supports ranked reads without grouping all historical Matches. MongoDB must run as a replica set for transactions; Compose initializes a single-node `rs0` replica set. Before using API B on an existing database, or to repair counters, stop the Process evaluation consumer and run `npm run rebuild:rankings`; the command replaces the projection from Match history, then evaluation can resume.
+
+**History retention and archival.** Live `events` and `matched_events` older than `HISTORY_RETENTION_DAYS` (90 by default, configurable from 1 to 36,500 days) move in bounded Mongo transactions to `events_archive` and `matched_events_archive`. Run `npm run archive:history` manually or schedule it daily; rerunning it is safe. API A reads the active and archived Match collections, and `npm run rebuild:rankings` includes both, so archiving does not change reports or API B totals. Archives are retained indefinitely; this policy reduces the live collection size but does not reduce total MongoDB storage. Back up and monitor the archive collections as part of the same database.
 
 **Queue-per-stage, role-gated consumers.** `events_queue` and `events_evaluation_queue` isolate ingestion from evaluation latency. Prefetch is capped (`prefetchCount: 500`) so a slow consumer can't have the broker push an unbounded unacked buffer into memory.
 

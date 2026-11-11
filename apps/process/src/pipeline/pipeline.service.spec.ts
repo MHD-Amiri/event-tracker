@@ -5,7 +5,7 @@ import { connect, disconnect, Types, Model } from 'mongoose';
 import { PipelineService, checkCondition } from './pipeline.service';
 import { Event, EventDocument, EventSchema, SensorEventMessage } from './schemas/event.schema';
 import { Rule, RuleSchema, RuleOperator } from '../rules/schemas/rule.schema';
-import { MatchedEvent, MatchedEventDocument, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
+import { ArchivedMatchedEvent, ArchivedMatchedEventSchema, MatchedEvent, MatchedEventDocument, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
 import { RulesService } from '../rules/rules.service';
 import { RuleAgentCount, RuleAgentCountSchema } from '../ranking/rule-agent-count.schema';
 import { RankingService } from '../ranking/ranking.service';
@@ -41,8 +41,10 @@ describe('PipelineService', () => {
         eventModel = connection.model(Event.name, EventSchema);
         ruleModel = connection.model(Rule.name, RuleSchema);
         matchedEventModel = connection.model(MatchedEvent.name, MatchedEventSchema);
+        const archivedMatchedEventModel = connection.model(ArchivedMatchedEvent.name, ArchivedMatchedEventSchema);
         countModel = connection.model(RuleAgentCount.name, RuleAgentCountSchema);
         await matchedEventModel.init();
+        await archivedMatchedEventModel.init();
         await countModel.init();
         rankingService = new RankingService(matchedEventModel as any, countModel as any);
 

@@ -53,11 +53,12 @@ export class RankingService {
     }
 
     /**
-     * Rebuild counts from immutable Match history. Pause evaluation consumers
-     * before running this maintenance operation so writes cannot race the rebuild.
+     * Rebuild counts from active and archived immutable Match history. Pause
+     * evaluation consumers before running so concurrent writes cannot race it.
      */
     async rebuildFromMatchHistory(): Promise<void> {
         const counts = await this.matchedEventModel.aggregate([
+            { $unionWith: { coll: 'matched_events_archive', pipeline: [] } },
             { $group: { _id: { ruleId: '$ruleId', agentId: '$agentId' }, totalMatches: { $sum: 1 } } },
             { $project: { _id: 0, ruleId: '$_id.ruleId', agentId: '$_id.agentId', totalMatches: 1 } },
         ]);

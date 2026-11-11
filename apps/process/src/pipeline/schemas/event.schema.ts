@@ -46,3 +46,8 @@ export const EventSchema = SchemaFactory.createForClass(Event);
 
 // Compound index for querying events by agent and time efficiently
 EventSchema.index({ agentId: 1, timestamp: -1 });
+EventSchema.index({ timestamp: 1 });
+
+export class ArchivedEvent extends Event { }
+export const ArchivedEventSchema = EventSchema.clone();
+ArchivedEventSchema.set('collection', 'events_archive');
