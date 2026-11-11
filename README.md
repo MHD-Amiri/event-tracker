@@ -148,7 +148,7 @@ The ranking endpoint reads the indexed `rule_agent_counts` projection, so reques
 **4. Manage rules**:
 
 ```bash
-curl http://localhost:3000/rules                 # list all
+curl 'http://localhost:3000/rules?page=1&limit=20' # list a page (limit max 100)
 curl http://localhost:3000/rules/<id>            # get one
 curl -X PUT http://localhost:3000/rules/<id> \
   -H 'Content-Type: application/json' \
@@ -165,7 +165,7 @@ Run multiple agents to make the ranking interesting: `AGENT_ID=agent-2 npm run s
 | Method | Path | Body | Notes |
 |---|---|---|---|
 | `POST` | `/rules` | `CreateRuleDto` | |
-| `GET` | `/rules` | — | |
+| `GET` | `/rules` | optional `page` (default 1), `limit` (default 20, max 100) | Returns `{ items, total, page, limit, totalPages }`; sorted by stable Rule ID order |
 | `GET` | `/rules/:id` | — | 404 if unknown |
 | `PUT` | `/rules/:id` | `UpdateRuleDto` | partial update |
 | `DELETE` | `/rules/:id` | — | `{ success: true }` |

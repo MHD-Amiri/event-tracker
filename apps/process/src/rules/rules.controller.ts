@@ -1,4 +1,4 @@
-import { Controller, Get, Post, Put, Delete, Body, Param } from '@nestjs/common';
+import { Controller, Get, Post, Put, Delete, Body, Param, Query } from '@nestjs/common';
 import { RulesService } from './rules.service';
 import { CreateRuleDto } from './dto/create-rule.dto';
 import { UpdateRuleDto } from './dto/update-rule.dto';
@@ -13,8 +13,8 @@ export class RulesController {
     }
 
     @Get()
-    findAll() {
-        return this.rulesService.findAll();
+    findAll(@Query('page') page?: string, @Query('limit') limit?: string) {
+        return this.rulesService.findAll(page, limit);
     }
 
     @Get(':id')

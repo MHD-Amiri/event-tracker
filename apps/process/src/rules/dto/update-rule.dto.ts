@@ -1,24 +1,26 @@
-import { IsBoolean, IsEnum, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsBoolean, IsEnum, IsNotEmpty, IsNumber, IsString, ValidateIf } from 'class-validator';
 import { RuleOperator } from '../schemas/rule.schema';
 
 export class UpdateRuleDto {
     @IsString()
-    @IsOptional()
+    @IsNotEmpty()
+    @ValidateIf((_object, value) => value !== undefined)
     name?: string;
 
     @IsString()
-    @IsOptional()
+    @IsNotEmpty()
+    @ValidateIf((_object, value) => value !== undefined)
     eventName?: string;
 
     @IsEnum(RuleOperator)
-    @IsOptional()
+    @ValidateIf((_object, value) => value !== undefined)
     operator?: RuleOperator;
 
-    @IsNumber()
-    @IsOptional()
+    @IsNumber({ allowNaN: false, allowInfinity: false })
+    @ValidateIf((_object, value) => value !== undefined)
     value?: number;
 
     @IsBoolean()
-    @IsOptional()
+    @ValidateIf((_object, value) => value !== undefined)
     isActive?: boolean;
 }

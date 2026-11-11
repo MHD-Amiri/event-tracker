@@ -13,7 +13,7 @@ export class CreateRuleDto {
     @IsEnum(RuleOperator)
     operator: RuleOperator;
 
-    @IsNumber()
+    @IsNumber({ allowNaN: false, allowInfinity: false })
     value: number;
 
     @IsBoolean()
