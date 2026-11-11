@@ -60,6 +60,7 @@ describe('AgentService', () => {
 
         expect(client.emit).toHaveBeenCalledTimes(1);
         expect(client.emit).toHaveBeenCalledWith('event_created', expect.objectContaining({
+            eventId: expect.any(String),
             agentId: 'agent-default-1',
             timestamp: '2026-11-09T12:34:56.200Z',
             payload: expect.objectContaining({

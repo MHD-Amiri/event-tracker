@@ -28,6 +28,10 @@ export class MatchedEvent {
     @Prop({ required: true, type: Types.ObjectId, ref: 'Rule' })
     ruleId: Types.ObjectId;
 
+    // Stable source-event identity makes repeated evaluation idempotent.
+    @Prop({ required: true, type: String })
+    eventId: string;
+
     // Snapshot of the rule at match time (preserves reporting if the rule
     // is later edited or deleted)
     @Prop({ type: RuleSnapshot, _id: false })
@@ -54,3 +58,8 @@ export const MatchedEventSchema = SchemaFactory.createForClass(MatchedEvent);
 MatchedEventSchema.index({ ruleId: 1, matchedAt: -1 });
 // Compound index for Agent Ranking query
 MatchedEventSchema.index({ agentId: 1, matchedAt: -1 });
+// Partial filter keeps legacy rows without eventId indexable during rollout.
+MatchedEventSchema.index(
+    { ruleId: 1, eventId: 1 },
+    { unique: true, partialFilterExpression: { eventId: { $type: 'string' } } },
+);

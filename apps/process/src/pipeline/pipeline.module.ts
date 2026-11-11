@@ -8,6 +8,7 @@ import { MatchedEvent, MatchedEventSchema } from '../rules/schemas/matched-event
 import { RulesModule } from '../rules/rules.module';
 import { PipelineService } from './pipeline.service';
 import { PipelineController } from './pipeline.controller';
+import { RmqRetryService } from './rmq-retry.service';
 
 @Module({
     imports: [
@@ -27,6 +28,6 @@ import { PipelineController } from './pipeline.controller';
         RulesModule,
     ],
     controllers: [PipelineController],
-    providers: [PipelineService],
+    providers: [PipelineService, RmqRetryService],
 })
 export class PipelineModule { }

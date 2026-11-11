@@ -16,6 +16,7 @@ export class EventPayload {
 // Kept next to the persisted schema because they differ in exactly one way:
 // the agent's ISO timestamp becomes a Date here.
 export interface SensorEventMessage {
+    eventId: string;
     agentId: string;
     timestamp: string; // ISO 8601
     payload: {
@@ -24,9 +25,8 @@ export interface SensorEventMessage {
     };
 }
 
-// _id is a client-generated string (agentId|timestamp|name|value) so a
-// redelivered message (duplicate key 11000) is a no-op instead of a duplicate
-// row — see pipeline.service.ts ingest()
+// _id is the stable agent-generated eventId, so a redelivered message is a
+// no-op instead of a duplicate row — see pipeline.service.ts ingest().
 @Schema({ timestamps: true, collection: 'events' })
 export class Event {
     @Prop({ required: true })

@@ -3,9 +3,9 @@ import { getModelToken } from '@nestjs/mongoose';
 import { MongoMemoryServer } from 'mongodb-memory-server';
 import { connect, disconnect, Types, Model } from 'mongoose';
 import { PipelineService, checkCondition } from './pipeline.service';
-import { Event, EventSchema, SensorEventMessage } from './schemas/event.schema';
+import { Event, EventDocument, EventSchema, SensorEventMessage } from './schemas/event.schema';
 import { Rule, RuleSchema, RuleOperator } from '../rules/schemas/rule.schema';
-import { MatchedEvent, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
+import { MatchedEvent, MatchedEventDocument, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
 import { RulesService } from '../rules/rules.service';
 
 /**
@@ -37,6 +37,7 @@ describe('PipelineService', () => {
         eventModel = connection.model(Event.name, EventSchema);
         ruleModel = connection.model(Rule.name, RuleSchema);
         matchedEventModel = connection.model(MatchedEvent.name, MatchedEventSchema);
+        await matchedEventModel.init();
 
         const moduleRef = await Test.createTestingModule({
             providers: [
@@ -82,6 +83,7 @@ describe('PipelineService', () => {
     });
 
     const event: SensorEventMessage = {
+        eventId: 'event-1',
         agentId: 'agent-1',
         timestamp: '2026-11-09T00:00:00.000Z',
         payload: { name: 'temperature', value: 42.5 },
@@ -108,11 +110,11 @@ describe('PipelineService', () => {
             expect(new Date(doc!.timestamp).toISOString()).toBe(event.timestamp);
         });
 
-        it('builds a deterministic _id from the message content', async () => {
+        it('uses the stable event ID as the event document ID', async () => {
             await pipeline.ingest(event);
 
             const doc = await eventModel.findOne({}).lean();
-            expect(doc!._id).toBe('agent-1|2026-11-09T00:00:00.000Z|temperature|42.5');
+            expect(doc!._id).toBe('event-1');
         });
 
         it('is idempotent on redelivery: a duplicate save is a no-op, not a duplicate row', async () => {
@@ -139,7 +141,7 @@ describe('PipelineService', () => {
             expect(rmqEmit).toHaveBeenCalledTimes(1);
         });
 
-        it('rejects when the emit fails, so the consumer nacks and the message retries as a unit', async () => {
+        it('rejects when the emit fails so the consumer can schedule a retry', async () => {
             const failingRef = {
                 subscribe: (handlers: any) => {
                     handlers.error(new Error('broker down'));
@@ -207,6 +209,33 @@ describe('PipelineService', () => {
 
             const matches = await matchedEventModel.find({}).lean();
             expect(matches).toHaveLength(1);
+        });
+
+        it('records only one match when the same event is evaluated more than once', async () => {
+            const rule = await ruleModel.create({
+                name: 'High temperature',
+                eventName: 'temperature',
+                operator: RuleOperator.GREATER_THAN,
+                value: 40,
+                isActive: true,
+            });
+            const fresh = new PipelineService(
+                eventModel as unknown as Model<EventDocument>,
+                matchedEventModel as unknown as Model<MatchedEventDocument>,
+                { emit: jest.fn().mockReturnValue(emitRef) } as any,
+                { getActiveRules: async () => [rulesFromCache(rule)] } as any,
+            );
+
+            await fresh.evaluate(event);
+            await fresh.evaluate(event);
+
+            expect(await matchedEventModel.countDocuments({ ruleId: rule._id, eventId: event.eventId })).toBe(1);
+        });
+
+        it('rejects invalid broker event data before doing work', async () => {
+            const invalidEvent = { ...event, payload: { ...event.payload, value: Number.NaN } };
+
+            await expect(pipeline.evaluate(invalidEvent)).rejects.toThrow('Invalid sensor event');
         });
 
         it('casts the cache-stringified rule _id back to a valid ObjectId ref', async () => {

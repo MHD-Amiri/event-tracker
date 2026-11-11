@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit, OnModuleDestroy, Logger } from '@nestjs/commo
 import { ConfigService } from '@nestjs/config';
 import { ClientProxy } from '@nestjs/microservices';
 import { faker } from '@faker-js/faker';
+import { randomUUID } from 'crypto';
 import { clientProxy, queueNames } from '@app/rmq';
 import { SensorEventMessage } from './sensor-event.interface';
 
@@ -62,6 +63,7 @@ export class AgentService implements OnModuleInit, OnModuleDestroy {
         const randomValue = faker.number.float({ min: 10, max: 120, fractionDigits: 2 });
 
         const message: SensorEventMessage = {
+            eventId: randomUUID(),
             agentId: this.agentId,
             timestamp: new Date().toISOString(),
             payload: {

@@ -27,9 +27,9 @@ A distributed event-tracking pipeline: simulated agents stream sensor events ove
 ### Message flow
 
 1. Agent publishes `event_created` → `events_queue`
-2. Process (ingest) saves the event to MongoDB with a **deterministic id** (`agentId|timestamp|name|value`), then emits `evaluate_event`
+2. Process (ingest) saves the event to MongoDB with the agent-generated **stable event ID**, then emits `evaluate_event`
 3. Process (evaluate) loads active rules (Redis-cached), inserts `matched_events` for every matching rule — with a full **rule snapshot** embedded, so reports stay accurate even if the rule is edited or deleted later
-4. If any step fails, the message is **nacked and requeued**; the deterministic id makes redelivery idempotent (duplicate key → no-op)
+4. Failed messages receive bounded delayed retries; malformed or exhausted messages are preserved in a durable per-queue dead-letter queue (DLQ)
 
 ## Prerequisites
 
@@ -57,6 +57,8 @@ Configuration is env-driven with sensible localhost defaults — no `.env` neede
 | Variable | Default | Used by |
 |---|---|---|
 | `RABBITMQ_URL` | `amqp://guest:guest@localhost:5672` | agent + process (`RABBITMQ_URI` is a deprecated alias) |
+| `RMQ_MAX_RETRIES` | `3` | process consumers; retries after initial delivery before DLQ |
+| `RMQ_RETRY_DELAY_MS` | `5000` | process consumers; delay before retry |
 | `MONGO_URI` | `mongodb://localhost:27017/event_tracker` | process |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | process |
 | `PORT` | `3000` | process HTTP |
@@ -170,9 +172,11 @@ RabbitMQ round-robins each queue across all its consumers, so scaling the evalua
 
 ## Design decisions & best practices
 
-**Idempotent consumption.** Every event is persisted under a deterministic id (`agentId|timestamp|name|value`). If the broker redelivers a message after a partial failure, the duplicate insert is a no-op (duplicate-key 11000 is caught and ignored), so retry-as-a-unit is safe. This is what makes nack-with-requeue viable without duplicate rows.
+**Idempotent consumption.** Every event carries a generated `eventId`, which is the event document ID. A match has a unique `(ruleId, eventId)` key and is written with an upsert, so redelivery cannot inflate match counts. Two distinct events with identical readings remain distinct.
 
-**Broker confirms on the forward hop.** The `evaluate_event` emit is awaited, not fire-and-forget: the handler only acks the original message once the next stage has accepted it. A dropped broker connection fails the handler → nack → redelivery.
+**Broker confirms on forward and retry hops.** The `evaluate_event` emit and retry/DLQ forwarding are awaited; the source delivery is acknowledged only after forwarding succeeds. A retry queue holds each failure for `RMQ_RETRY_DELAY_MS` before returning it to the source queue.
+
+**Bounded failure handling.** Broker messages are validated before service work. Invalid messages go directly to `<queue>.dlq`; transient failures retry up to `RMQ_MAX_RETRIES` times, then go to the same durable DLQ. Defaults are 3 retries and a 5 second delay. Inspect the queue's DLQ before replaying or discarding messages.
 
 **Mongo is the source of truth; Redis is disposable.** Both caches (rules, ranking) are rebuild-on-miss. Flushing Redis degrades performance, never correctness. Report freshness is bounded by the 1-hour TTL; rule changes are immediate because mutations invalidate on write.
 
@@ -183,8 +187,7 @@ RabbitMQ round-robins each queue across all its consumers, so scaling the evalua
 **Collection naming.** `matched_events` (and `events`) are declared explicitly in the schema — Mongoose would otherwise pluralize the class name into `matchedevents`.
 
 **Known trade-offs / future work:**
-- A poison message (one that always fails) requeues forever — add a retry-count header + dead-letter queue before relying on this in production
-- The dedup id assumes `agentId|timestamp|name|value` uniquely identifies a real event; same-timestamp identical events from one agent collapse
+- DLQ replay is an operator action; add an authenticated replay tool before relying on unattended recovery in production
 - Report queries are unauthenticated; add auth before exposing beyond localhost
 
 ## Development

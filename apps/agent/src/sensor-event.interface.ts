@@ -4,6 +4,7 @@ export interface SensorEventPayload {
 }
 
 export interface SensorEventMessage {
+    eventId: string;
     agentId: string;
     timestamp: string; // ISO 8601
     payload: SensorEventPayload;

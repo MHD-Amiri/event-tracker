@@ -7,6 +7,7 @@ import { Rule } from '../rules/schemas/rule.schema';
 import { RuleOperator } from '../rules/schemas/rule.schema';
 import { MatchedEvent, MatchedEventDocument } from '../rules/schemas/matched-event.schema';
 import { RulesService } from '../rules/rules.service';
+import { validateSensorEventMessage } from './sensor-event.validation';
 
 /**
  * The sensor-event pipeline, in one place.
@@ -17,12 +18,12 @@ import { RulesService } from '../rules/rules.service';
  *   ingest(event)   events_queue consumer: persist (idempotently, so a
  *                   redelivery is a no-op) then hand off to the evaluation
  *                   queue. A failure in either step rejects, and the
- *                   consumer nacks — the whole message retries as a unit.
+ *                   consumer routes it through bounded retry/DLQ handling.
  *
  *   evaluate(event) events_evaluation_queue consumer: match the event
  *                   against active rules and persist the matches.
  *
- * Everything between the two interfaces — deterministic _id construction,
+ * Everything between the two interfaces — stable event ID persistence,
  * duplicate-key absorption, the awaited emit, rule caching, snapshotting —
  * is implementation detail that lives here and nowhere else.
  */
@@ -38,12 +39,12 @@ export class PipelineService {
     ) { }
 
     async ingest(dto: SensorEventMessage): Promise<void> {
-        // Deterministic _id built from the message content: if the consumer
-        // nacks (e.g. the emit below failed) and RabbitMQ redelivers, the
-        // second save hits a duplicate key and is a no-op instead of a
-        // duplicate row
+        validateSensorEventMessage(dto);
+
+        // Agent-generated event IDs survive redelivery and do not collapse
+        // two distinct events that happen to have identical readings.
         const createdEvent = new this.eventModel({
-            _id: `${dto.agentId}|${dto.timestamp}|${dto.payload.name}|${dto.payload.value}`,
+            _id: dto.eventId,
             agentId: dto.agentId,
             timestamp: new Date(dto.timestamp),
             payload: dto.payload,
@@ -58,8 +59,8 @@ export class PipelineService {
         }
 
         // Awaiting the emit: resolves once the message is written to the
-        // broker, rejects on failure so the consumer nacks and the whole
-        // message (persist + emit) is retried as a unit
+        // broker, rejects on failure so the consumer schedules a bounded
+        // retry of the original message.
         await new Promise<void>((resolve, reject) => {
             this.rmqClient.emit('evaluate_event', dto).subscribe({
                 next: () => resolve(),
@@ -70,6 +71,7 @@ export class PipelineService {
     }
 
     async evaluate(event: SensorEventMessage): Promise<void> {
+        validateSensorEventMessage(event);
         const rules = await this.rulesService.getActiveRules();
         if (!rules || rules.length === 0) return;
 
@@ -79,6 +81,7 @@ export class PipelineService {
             if (rule.eventName === event.payload.name) {
                 if (checkCondition(event.payload.value, rule.operator, rule.value)) {
                     matchesToInsert.push({
+                        eventId: event.eventId,
                         // _id is a plain string when rules come from the Redis cache
                         // (JSON.stringify), so cast back to ObjectId to keep the ref intact
                         ruleId: new Types.ObjectId(rule._id as string),
@@ -98,7 +101,16 @@ export class PipelineService {
         }
 
         if (matchesToInsert.length > 0) {
-            await this.matchedEventModel.insertMany(matchesToInsert);
+            await this.matchedEventModel.bulkWrite(
+                matchesToInsert.map((match) => ({
+                    updateOne: {
+                        filter: { ruleId: match.ruleId, eventId: match.eventId },
+                        update: { $setOnInsert: match },
+                        upsert: true,
+                    },
+                })),
+                { ordered: false },
+            );
             this.logger.log(`Stored ${matchesToInsert.length} rule match(es) for agent ${event.agentId}`);
         }
     }
