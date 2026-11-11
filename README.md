@@ -11,7 +11,7 @@ A distributed event-tracking pipeline: simulated agents stream sensor events ove
                                     │ save                             └─────────────┘
                                     ▼
                                MongoDB                                  Redis
-                                                                    (rules + ranking cache)
+                                                                    (active Rules cache)
 ```
 
 ## Architecture
@@ -21,8 +21,8 @@ A distributed event-tracking pipeline: simulated agents stream sensor events ove
 | **Agent** (`apps/agent`) | Standalone worker emitting simulated sensor events (~5/sec) to `events_queue` |
 | **Process** (`apps/process`) | NestJS monolith: ingestion consumer, rule-evaluation consumer, REST API. Deployable as one process or split by role (see [Scaling](#scaling--deployment-roles)) |
 | **RabbitMQ** | Two durable queues — decouples ingestion from evaluation, buffers failures |
-| **MongoDB** | Source of truth: `events`, `rules`, `matched_events` collections |
-| **Redis** | 1-hour TTL caches: active rules set, per-rule agent ranking |
+| **MongoDB** | Source of truth: `events`, `rules`, `matched_events`, and durable `rule_agent_counts` collections; run as a replica set for atomic Match/count writes |
+| **Redis** | 1-hour TTL cache for the active Rule set |
 
 ### Message flow
 
@@ -87,7 +87,7 @@ Configuration is env-driven. The table shows `.sample.env` values; copy that fil
 | `RABBITMQ_URL` | `amqp://event_tracker:event_tracker_dev@localhost:5672` | agent + process (`RABBITMQ_URI` is a deprecated alias) |
 | `RMQ_MAX_RETRIES` | `3` | process consumers; retries after initial delivery before DLQ |
 | `RMQ_RETRY_DELAY_MS` | `5000` | process consumers; delay before retry |
-| `MONGO_URI` | `mongodb://localhost:27017/event_tracker` | process |
+| `MONGO_URI` | `mongodb://localhost:27017/event_tracker?replicaSet=rs0` | process |
 | `REDIS_HOST` / `REDIS_PORT` | `localhost` / `6379` | process |
 | `PORT` | `3000` | process HTTP |
 | `PROCESS_ROLE` | `both` | process deployment role |
@@ -143,7 +143,7 @@ curl http://localhost:3000/reports/rules/682f9f2a1c9d3e4f5a6b7c8d/ranking
 ]
 ```
 
-The ranking endpoint is cache-aside: first call aggregates from Mongo (the source of truth), then serves from Redis for 1 hour. Reports may lag live data by up to that TTL — by design, see [Design decisions](#design-decisions--best-practices).
+The ranking endpoint reads the indexed `rule_agent_counts` projection, so requests do not scan Match history and reflect committed counts immediately.
 
 **4. Manage rules**:
 
@@ -177,7 +177,7 @@ Run multiple agents to make the ranking interesting: `AGENT_ID=agent-2 npm run s
 | Method | Path | Query | Notes |
 |---|---|---|---|
 | `GET` | `/reports/rules/:ruleId/timestamps` | `start`, `end` (ISO 8601) | Window must be ≤ 24h, `start ≤ end`. Groups matched timestamps per agent |
-| `GET` | `/reports/rules/:ruleId/ranking` | — | All-time per-agent match counts, descending. Redis-cached 1h |
+| `GET` | `/reports/rules/:ruleId/ranking` | — | All-time per-agent match counts from the durable projection, descending |
 
 Both validate `ruleId` (400 on malformed ObjectId) and return 400 with a clear message on invalid input.
 
@@ -206,7 +206,9 @@ RabbitMQ round-robins each queue across all its consumers, so scaling the evalua
 
 **Bounded failure handling.** Broker messages are validated before service work. Invalid messages go directly to `<queue>.dlq`; transient failures retry up to `RMQ_MAX_RETRIES` times, then go to the same durable DLQ. Defaults are 3 retries and a 5 second delay. Inspect the queue's DLQ before replaying or discarding messages.
 
-**Mongo is the source of truth; Redis is disposable.** Both caches (rules, ranking) are rebuild-on-miss. Flushing Redis degrades performance, never correctness. Report freshness is bounded by the 1-hour TTL; rule changes are immediate because mutations invalidate on write.
+**Mongo is the source of truth; Redis is disposable.** Redis caches only active Rules; flushing it degrades performance, never correctness. API B reads durable Mongo counters and does not depend on Redis.
+
+**Durable ranking projection.** Each Match and its per-rule/per-agent count increment commit in one Mongo transaction. The `(ruleId, agentId)` counter index supports ranked reads without grouping all historical Matches. MongoDB must run as a replica set for transactions; Compose initializes a single-node `rs0` replica set. Before using API B on an existing database, or to repair counters, stop the Process evaluation consumer and run `npm run rebuild:rankings`; the command replaces the projection from Match history, then evaluation can resume.
 
 **Queue-per-stage, role-gated consumers.** `events_queue` and `events_evaluation_queue` isolate ingestion from evaluation latency. Prefetch is capped (`prefetchCount: 500`) so a slow consumer can't have the broker push an unbounded unacked buffer into memory.
 

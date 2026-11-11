@@ -1,12 +1,14 @@
 import { Test } from '@nestjs/testing';
 import { getModelToken } from '@nestjs/mongoose';
-import { MongoMemoryServer } from 'mongodb-memory-server';
+import { MongoMemoryReplSet } from 'mongodb-memory-server';
 import { connect, disconnect, Types, Model } from 'mongoose';
 import { PipelineService, checkCondition } from './pipeline.service';
 import { Event, EventDocument, EventSchema, SensorEventMessage } from './schemas/event.schema';
 import { Rule, RuleSchema, RuleOperator } from '../rules/schemas/rule.schema';
 import { MatchedEvent, MatchedEventDocument, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
 import { RulesService } from '../rules/rules.service';
+import { RuleAgentCount, RuleAgentCountSchema } from '../ranking/rule-agent-count.schema';
+import { RankingService } from '../ranking/ranking.service';
 
 /**
  * Tests through PipelineService's interface — ingest()/evaluate() — with the
@@ -17,11 +19,13 @@ import { RulesService } from '../rules/rules.service';
  */
 
 describe('PipelineService', () => {
-    let mongod: MongoMemoryServer;
+    let mongod: MongoMemoryReplSet;
     let pipeline: PipelineService;
     let eventModel: Model<Event>;
     let ruleModel: Model<Rule>;
     let matchedEventModel: Model<MatchedEvent>;
+    let countModel: Model<RuleAgentCount>;
+    let rankingService: RankingService;
     let rmqEmit: jest.Mock;
 
     const emitRef = {
@@ -32,16 +36,20 @@ describe('PipelineService', () => {
     };
 
     beforeAll(async () => {
-        mongod = await MongoMemoryServer.create();
+        mongod = await MongoMemoryReplSet.create({ replSet: { count: 1 } });
         const connection = await connect(mongod.getUri('event_tracker_test'));
         eventModel = connection.model(Event.name, EventSchema);
         ruleModel = connection.model(Rule.name, RuleSchema);
         matchedEventModel = connection.model(MatchedEvent.name, MatchedEventSchema);
+        countModel = connection.model(RuleAgentCount.name, RuleAgentCountSchema);
         await matchedEventModel.init();
+        await countModel.init();
+        rankingService = new RankingService(matchedEventModel as any, countModel as any);
 
         const moduleRef = await Test.createTestingModule({
             providers: [
                 PipelineService,
+                { provide: RankingService, useValue: rankingService },
                 {
                     provide: getModelToken(Event.name),
                     useValue: eventModel,
@@ -92,6 +100,7 @@ describe('PipelineService', () => {
     beforeEach(async () => {
         await eventModel.deleteMany({});
         await matchedEventModel.deleteMany({});
+        await countModel.deleteMany({});
         await ruleModel.deleteMany({});
         rmqEmit.mockClear();
     });
@@ -185,6 +194,7 @@ describe('PipelineService', () => {
             const moduleRef = await Test.createTestingModule({
                 providers: [
                     PipelineService,
+                    { provide: RankingService, useValue: rankingService },
                     {
                         provide: getModelToken(Event.name),
                         useValue: eventModel,
@@ -221,15 +231,61 @@ describe('PipelineService', () => {
             });
             const fresh = new PipelineService(
                 eventModel as unknown as Model<EventDocument>,
-                matchedEventModel as unknown as Model<MatchedEventDocument>,
                 { emit: jest.fn().mockReturnValue(emitRef) } as any,
                 { getActiveRules: async () => [rulesFromCache(rule)] } as any,
+                rankingService,
             );
 
             await fresh.evaluate(event);
             await fresh.evaluate(event);
 
             expect(await matchedEventModel.countDocuments({ ruleId: rule._id, eventId: event.eventId })).toBe(1);
+            const [count] = await countModel.find({ ruleId: rule._id }).lean();
+            expect(count.totalMatches).toBe(1);
+        });
+
+        it('ranks from durable counts and rebuilds those counts from Match history', async () => {
+            const rule = await ruleModel.create({
+                name: 'High temperature',
+                eventName: 'temperature',
+                operator: RuleOperator.GREATER_THAN,
+                value: 40,
+                isActive: true,
+            });
+            const rules = { getActiveRules: async () => [rulesFromCache(rule)] };
+            const fresh = new PipelineService(
+                eventModel as unknown as Model<EventDocument>,
+                { emit: jest.fn() } as any,
+                rules as any,
+                rankingService,
+            );
+
+            await fresh.evaluate(event);
+            await fresh.evaluate({
+                ...event,
+                eventId: 'event-2',
+                agentId: 'agent-2',
+                payload: { name: 'temperature', value: 90 },
+            });
+            await fresh.evaluate({
+                ...event,
+                eventId: 'event-3',
+                agentId: 'agent-1',
+                payload: { name: 'temperature', value: 45 },
+            });
+
+            await expect(rankingService.getRanking(rule._id)).resolves.toEqual([
+                { agentId: 'agent-1', totalMatches: 2 },
+                { agentId: 'agent-2', totalMatches: 1 },
+            ]);
+
+            await countModel.deleteMany({});
+            await rankingService.rebuildFromMatchHistory();
+
+            await expect(rankingService.getRanking(rule._id)).resolves.toEqual([
+                { agentId: 'agent-1', totalMatches: 2 },
+                { agentId: 'agent-2', totalMatches: 1 },
+            ]);
         });
 
         it('rejects invalid broker event data before doing work', async () => {
@@ -251,6 +307,7 @@ describe('PipelineService', () => {
             const moduleRef = await Test.createTestingModule({
                 providers: [
                     PipelineService,
+                    { provide: RankingService, useValue: rankingService },
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => [cached] } },
@@ -281,6 +338,7 @@ describe('PipelineService', () => {
             const moduleRef = await Test.createTestingModule({
                 providers: [
                     PipelineService,
+                    { provide: RankingService, useValue: rankingService },
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => [cached] } },
@@ -311,6 +369,7 @@ describe('PipelineService', () => {
             const moduleRef = await Test.createTestingModule({
                 providers: [
                     PipelineService,
+                    { provide: RankingService, useValue: rankingService },
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => rules } },
@@ -328,6 +387,7 @@ describe('PipelineService', () => {
             const moduleRef = await Test.createTestingModule({
                 providers: [
                     PipelineService,
+                    { provide: RankingService, useValue: rankingService },
                     { provide: getModelToken(Event.name), useValue: eventModel },
                     { provide: getModelToken(MatchedEvent.name), useValue: matchedEventModel },
                     { provide: RulesService, useValue: { getActiveRules: async () => [] } },

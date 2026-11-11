@@ -17,12 +17,7 @@ jest.mock('ioredis', () => ({
 }));
 
 describe('RedisService', () => {
-    const ruleId = '507f1f77bcf86cd799439011';
     const rules = [{ _id: 'rule-1', eventName: 'temperature', operator: '>', value: 80 }];
-    const ranking = [
-        { agentId: 'agent-1', totalMatches: 12 },
-        { agentId: 'agent-2', totalMatches: 5 },
-    ];
 
     let service: RedisService;
 
@@ -71,71 +66,17 @@ describe('RedisService', () => {
         expect(mockRedisClient.del).toHaveBeenCalledWith('active_rules');
     });
 
-    it('serializes and restores a ranking under its per-Rule key', async () => {
-        const customService = createService({ REDIS_RANKING_TTL_SEC: '90' });
-
-        await customService.setRankingCache(ruleId, ranking);
-        expect(mockRedisClient.set).toHaveBeenCalledWith(
-            `ranking:${ruleId}`,
-            JSON.stringify(ranking),
-            'EX',
-            90,
-        );
-
-        mockRedisClient.get.mockResolvedValueOnce(JSON.stringify(ranking));
-        await expect(customService.getRankingCache(ruleId)).resolves.toEqual(ranking);
-        expect(mockRedisClient.get).toHaveBeenCalledWith(`ranking:${ruleId}`);
-        customService.onModuleDestroy();
-    });
-
-    it('uses each configured TTL for its own cache', async () => {
-        const customService = createService({
-            REDIS_RULES_TTL_SEC: '120',
-            REDIS_RANKING_TTL_SEC: '45',
-        });
-
-        await customService.setCachedRules(rules);
-        await customService.setRankingCache(ruleId, ranking);
-
-        expect(mockRedisClient.set).toHaveBeenNthCalledWith(
-            1,
-            'active_rules',
-            JSON.stringify(rules),
-            'EX',
-            120,
-        );
-        expect(mockRedisClient.set).toHaveBeenNthCalledWith(
-            2,
-            `ranking:${ruleId}`,
-            JSON.stringify(ranking),
-            'EX',
-            45,
-        );
-        customService.onModuleDestroy();
-    });
-
     it.each([undefined, 'invalid', '0', '-5'])(
         'falls back to one hour for missing or invalid TTL value %s',
         async (configuredTtl) => {
-            const customService = createService({
-                REDIS_RULES_TTL_SEC: configuredTtl,
-                REDIS_RANKING_TTL_SEC: configuredTtl,
-            });
+            const customService = createService({ REDIS_RULES_TTL_SEC: configuredTtl });
 
             await customService.setCachedRules(rules);
-            await customService.setRankingCache(ruleId, ranking);
 
             expect(mockRedisClient.set).toHaveBeenNthCalledWith(
                 1,
                 'active_rules',
                 JSON.stringify(rules),
-                'EX',
-                3600,
-            );
-            expect(mockRedisClient.set).toHaveBeenNthCalledWith(
-                2,
-                `ranking:${ruleId}`,
-                JSON.stringify(ranking),
                 'EX',
                 3600,
             );
@@ -181,8 +122,5 @@ describe('RedisService', () => {
         mockRedisClient.get.mockResolvedValueOnce('{not-json');
         await expect(service.getCachedRules()).rejects.toThrow(SyntaxError);
 
-        const redisError = new Error('Redis unavailable');
-        mockRedisClient.get.mockRejectedValueOnce(redisError);
-        await expect(service.getRankingCache(ruleId)).rejects.toBe(redisError);
     });
 });

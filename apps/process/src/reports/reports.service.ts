@@ -3,7 +3,7 @@ import { InjectModel } from '@nestjs/mongoose';
 import { ConfigService } from '@nestjs/config';
 import { Model, Types } from 'mongoose';
 import { MatchedEvent, MatchedEventDocument } from '../rules/schemas/matched-event.schema';
-import { RedisService } from '../redis/redis.service';
+import { RankingService } from '../ranking/ranking.service';
 
 @Injectable()
 export class ReportsService {
@@ -12,7 +12,7 @@ export class ReportsService {
 
     constructor(
         @InjectModel(MatchedEvent.name) private matchedEventModel: Model<MatchedEventDocument>,
-        private readonly redisService: RedisService,
+        private readonly rankingService: RankingService,
         configService: ConfigService,
     ) {
         const raw = configService.get<string>('REPORT_MAX_WINDOW_HOURS');
@@ -70,43 +70,14 @@ export class ReportsService {
     }
 
     // API 2: Agent ranking by match count for a rule (all-time)
-    // Cache-aside: Mongo is the source of truth, Redis caches the result for
-    // 1 hour so repeated requests skip the full-history aggregation
+    // Rankings are read from durable per-rule/per-agent counters, never from
+    // an aggregation over Match history.
     async getAgentRanking(ruleId: string) {
         if (!Types.ObjectId.isValid(ruleId)) {
             throw new BadRequestException('Invalid ruleId format.');
         }
 
-        const cached = await this.redisService.getRankingCache(ruleId);
-        if (cached) return cached;
-
         const objectId = new Types.ObjectId(ruleId);
-
-        const results = await this.matchedEventModel.aggregate([
-            {
-                $match: {
-                    ruleId: objectId,
-                },
-            },
-            {
-                $group: {
-                    _id: '$agentId',
-                    totalMatches: { $sum: 1 },
-                },
-            },
-            {
-                $sort: { totalMatches: -1 }, // Descending order (highest matches first)
-            },
-            {
-                $project: {
-                    _id: 0,
-                    agentId: '$_id',
-                    totalMatches: 1,
-                },
-            },
-        ]);
-
-        await this.redisService.setRankingCache(ruleId, results);
-        return results;
+        return this.rankingService.getRanking(objectId);
     }
 }

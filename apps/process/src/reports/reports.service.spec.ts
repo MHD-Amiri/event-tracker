@@ -1,7 +1,7 @@
 import { BadRequestException } from '@nestjs/common';
 import { Types } from 'mongoose';
 import { ReportsService } from './reports.service';
-import { RedisService } from '../redis/redis.service';
+import { RankingService } from '../ranking/ranking.service';
 import { MatchedEventDocument } from '../rules/schemas/matched-event.schema';
 
 describe('ReportsService', () => {
@@ -10,21 +10,19 @@ describe('ReportsService', () => {
     const end = '2026-11-09T06:00:00.000Z';
 
     let aggregate: jest.Mock;
-    let getRankingCache: jest.Mock;
-    let setRankingCache: jest.Mock;
+    let getRanking: jest.Mock;
     let service: ReportsService;
 
     const createService = (windowHours?: string) => {
         const model = { aggregate } as unknown as { aggregate: typeof aggregate } & import('mongoose').Model<MatchedEventDocument>;
-        const redis = { getRankingCache, setRankingCache } as unknown as RedisService;
+        const ranking = { getRanking } as unknown as RankingService;
         const config = { get: jest.fn().mockReturnValue(windowHours) };
-        return new ReportsService(model, redis, config as any);
+        return new ReportsService(model, ranking, config as any);
     };
 
     beforeEach(() => {
         aggregate = jest.fn().mockResolvedValue([]);
-        getRankingCache = jest.fn().mockResolvedValue(null);
-        setRankingCache = jest.fn().mockResolvedValue(undefined);
+        getRanking = jest.fn().mockResolvedValue([]);
         service = createService();
     });
 
@@ -126,39 +124,32 @@ describe('ReportsService', () => {
     });
 
     describe('getAgentRanking()', () => {
-        it('returns a cached ranking without querying Mongo', async () => {
+        it('returns the durable projection ranking without scanning Match history', async () => {
             const ranking = [{ agentId: 'agent-1', totalMatches: 7 }];
-            getRankingCache.mockResolvedValue(ranking);
+            getRanking.mockResolvedValue(ranking);
 
             await expect(service.getAgentRanking(ruleId)).resolves.toBe(ranking);
 
-            expect(getRankingCache).toHaveBeenCalledWith(ruleId);
+            expect(getRanking).toHaveBeenCalledWith(new Types.ObjectId(ruleId));
             expect(aggregate).not.toHaveBeenCalled();
-            expect(setRankingCache).not.toHaveBeenCalled();
         });
 
-        it('aggregates, caches, and returns the ranking on a cache miss', async () => {
+        it('returns the ordered agent totals from the durable projection', async () => {
             const ranking = [
                 { agentId: 'agent-2', totalMatches: 8 },
                 { agentId: 'agent-1', totalMatches: 3 },
             ];
-            aggregate.mockResolvedValue(ranking);
+            getRanking.mockResolvedValue(ranking);
 
             await expect(service.getAgentRanking(ruleId)).resolves.toBe(ranking);
 
-            expect(aggregate).toHaveBeenCalledWith([
-                { $match: { ruleId: new Types.ObjectId(ruleId) } },
-                { $group: { _id: '$agentId', totalMatches: { $sum: 1 } } },
-                { $sort: { totalMatches: -1 } },
-                { $project: { _id: 0, agentId: '$_id', totalMatches: 1 } },
-            ]);
-            expect(setRankingCache).toHaveBeenCalledWith(ruleId, ranking);
+            expect(aggregate).not.toHaveBeenCalled();
         });
 
         it('rejects a malformed Rule id before checking the cache', async () => {
             await expect(service.getAgentRanking('invalid-id')).rejects.toThrow(BadRequestException);
 
-            expect(getRankingCache).not.toHaveBeenCalled();
+            expect(getRanking).not.toHaveBeenCalled();
             expect(aggregate).not.toHaveBeenCalled();
         });
     });

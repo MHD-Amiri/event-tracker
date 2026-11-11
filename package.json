@@ -9,6 +9,7 @@
     "start:process:ingest": "PROCESS_ROLE=ingest nest start process --watch",
     "start:process:evaluate": "PROCESS_ROLE=evaluate nest start process --watch",
     "start:agent": "nest start agent --watch",
+    "rebuild:rankings": "npm run build && node dist/apps/process/src/rebuild-rankings.js",
     "test": "jest --verbose",
     "test:watch": "jest --watch"
   },

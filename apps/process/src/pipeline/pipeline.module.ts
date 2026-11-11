@@ -4,17 +4,16 @@ import { ClientsModule } from '@nestjs/microservices';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { publisherClientConfig, queueNames } from '@app/rmq';
 import { Event, EventSchema } from './schemas/event.schema';
-import { MatchedEvent, MatchedEventSchema } from '../rules/schemas/matched-event.schema';
 import { RulesModule } from '../rules/rules.module';
 import { PipelineService } from './pipeline.service';
 import { PipelineController } from './pipeline.controller';
 import { RmqRetryService } from './rmq-retry.service';
+import { RankingModule } from '../ranking/ranking.module';
 
 @Module({
     imports: [
         MongooseModule.forFeature([
             { name: Event.name, schema: EventSchema },
-            { name: MatchedEvent.name, schema: MatchedEventSchema },
         ]),
         ClientsModule.registerAsync([
             {
@@ -26,6 +25,7 @@ import { RmqRetryService } from './rmq-retry.service';
             },
         ]),
         RulesModule,
+        RankingModule,
     ],
     controllers: [PipelineController],
     providers: [PipelineService, RmqRetryService],

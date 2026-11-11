@@ -1,4 +1,4 @@
-export const DEFAULT_MONGO_URI = 'mongodb://localhost:27017/event_tracker';
+export const DEFAULT_MONGO_URI = 'mongodb://localhost:27017/event_tracker?replicaSet=rs0';
 
 interface MongoConfigReader {
     get<T = string>(key: string, defaultValue?: T): T;

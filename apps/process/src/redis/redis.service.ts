@@ -11,11 +11,9 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
     private readonly RULES_CACHE_KEY = RULES_CACHE_KEY;
 
     private readonly rulesTtl: number;
-    private readonly rankingTtl: number;
 
     constructor(private configService: ConfigService) {
         this.rulesTtl = this.readTtl('REDIS_RULES_TTL_SEC', 3600);
-        this.rankingTtl = this.readTtl('REDIS_RANKING_TTL_SEC', 3600);
     }
 
     // Parse a TTL in seconds, guarding against a malformed value silently
@@ -90,16 +88,4 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         await this.client.del(this.RULES_CACHE_KEY);
     }
 
-    // --- Agent ranking cache ---
-    // Cache-aside over the Mongo aggregation: Mongo is the source of truth,
-    // entries expire after the configured TTL and the next request rebuilds them.
-
-    async getRankingCache(ruleId: string): Promise<{ agentId: string; totalMatches: number }[] | null> {
-        const data = await this.client.get(`ranking:${ruleId}`);
-        return data ? JSON.parse(data) : null;
-    }
-
-    async setRankingCache(ruleId: string, ranking: { agentId: string; totalMatches: number }[]): Promise<void> {
-        await this.client.set(`ranking:${ruleId}`, JSON.stringify(ranking), 'EX', this.rankingTtl);
-    }
 }

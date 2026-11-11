@@ -29,7 +29,7 @@ const mongoLogger = new Logger('MongoDB');
         PipelineModule,
         RedisModule,
         RulesModule,
-        ReportsModule
+        ReportsModule,
     ],
 })
 export class AppModule { }

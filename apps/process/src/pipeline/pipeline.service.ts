@@ -5,9 +5,10 @@ import { Model, Types } from 'mongoose';
 import { Event, EventDocument, SensorEventMessage } from './schemas/event.schema';
 import { Rule } from '../rules/schemas/rule.schema';
 import { RuleOperator } from '../rules/schemas/rule.schema';
-import { MatchedEvent, MatchedEventDocument } from '../rules/schemas/matched-event.schema';
+import { MatchedEvent } from '../rules/schemas/matched-event.schema';
 import { RulesService } from '../rules/rules.service';
 import { validateSensorEventMessage } from './sensor-event.validation';
+import { RankingService } from '../ranking/ranking.service';
 
 /**
  * The sensor-event pipeline, in one place.
@@ -23,9 +24,9 @@ import { validateSensorEventMessage } from './sensor-event.validation';
  *   evaluate(event) events_evaluation_queue consumer: match the event
  *                   against active rules and persist the matches.
  *
- * Everything between the two interfaces — stable event ID persistence,
- * duplicate-key absorption, the awaited emit, rule caching, snapshotting —
- * is implementation detail that lives here and nowhere else.
+ * Event storage, validation, forwarding, rule selection, and match details
+ * stay behind these entry points; durable Match/count writes are delegated to
+ * RankingService so their transaction and repair behavior has one owner.
  */
 @Injectable()
 export class PipelineService {
@@ -33,9 +34,9 @@ export class PipelineService {
 
     constructor(
         @InjectModel(Event.name) private readonly eventModel: Model<EventDocument>,
-        @InjectModel(MatchedEvent.name) private readonly matchedEventModel: Model<MatchedEventDocument>,
         @Inject('INTERNAL_RABBITMQ_SERVICE') private readonly rmqClient: ClientProxy,
         private readonly rulesService: RulesService,
+        private readonly rankingService: RankingService,
     ) { }
 
     async ingest(dto: SensorEventMessage): Promise<void> {
@@ -101,16 +102,11 @@ export class PipelineService {
         }
 
         if (matchesToInsert.length > 0) {
-            await this.matchedEventModel.bulkWrite(
-                matchesToInsert.map((match) => ({
-                    updateOne: {
-                        filter: { ruleId: match.ruleId, eventId: match.eventId },
-                        update: { $setOnInsert: match },
-                        upsert: true,
-                    },
-                })),
-                { ordered: false },
-            );
+            await this.rankingService.recordMatches(matchesToInsert as {
+                ruleId: Types.ObjectId;
+                eventId: string;
+                agentId: string;
+            }[]);
             this.logger.log(`Stored ${matchesToInsert.length} rule match(es) for agent ${event.agentId}`);
         }
     }
