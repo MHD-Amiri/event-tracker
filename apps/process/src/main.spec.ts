@@ -1,7 +1,7 @@
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { Transport } from '@nestjs/microservices';
-import { bootstrap } from './main';
+import { bootstrap, runBootstrap } from './main';
 
 jest.mock('@nestjs/core', () => ({
     NestFactory: { create: jest.fn() },
@@ -16,6 +16,7 @@ describe('process bootstrap deployment roles', () => {
         'RMQ_EVALUATION_QUEUE',
     ];
     let originalEnv: Record<string, string | undefined>;
+    let originalExitCode: typeof process.exitCode;
     let app: {
         useGlobalPipes: jest.Mock;
         connectMicroservice: jest.Mock;
@@ -27,6 +28,7 @@ describe('process bootstrap deployment roles', () => {
 
     beforeEach(() => {
         jest.clearAllMocks();
+        originalExitCode = process.exitCode;
         originalEnv = Object.fromEntries(envKeys.map((key) => [key, process.env[key]]));
         process.env.PROCESS_ROLE = 'both';
         process.env.PORT = '4317';
@@ -51,6 +53,7 @@ describe('process bootstrap deployment roles', () => {
             else process.env[key] = value;
         }
         jest.restoreAllMocks();
+        process.exitCode = originalExitCode;
     });
 
     it('starts both queues and the HTTP server for the both role', async () => {
@@ -110,5 +113,36 @@ describe('process bootstrap deployment roles', () => {
         expect(app.useGlobalPipes).toHaveBeenCalledTimes(1);
         const [pipe] = app.useGlobalPipes.mock.calls[0];
         expect(pipe).toBeInstanceOf(ValidationPipe);
+    });
+
+    it('logs a clear startup error and exits unsuccessfully when bootstrap rejects', async () => {
+        const errorLog = jest.spyOn(Logger, 'error').mockImplementation(() => undefined);
+        const error = new Error('broker initialization failed');
+        create.mockRejectedValueOnce(error);
+
+        await expect(runBootstrap()).resolves.toBe(false);
+
+        expect(errorLog).toHaveBeenCalledWith(
+            'Process startup failed: Error: broker initialization failed',
+            undefined,
+            'ProcessBootstrap',
+        );
+        expect(process.exitCode).toBe(1);
+    });
+
+    it('logs circular rejection details without throwing from the error handler', async () => {
+        const errorLog = jest.spyOn(Logger, 'error').mockImplementation(() => undefined);
+        const error: Record<string, unknown> = {};
+        error.cause = error;
+        create.mockRejectedValueOnce(error);
+
+        await expect(runBootstrap()).resolves.toBe(false);
+
+        expect(errorLog).toHaveBeenCalledWith(
+            'Process startup failed: [unserializable error details]',
+            undefined,
+            'ProcessBootstrap',
+        );
+        expect(process.exitCode).toBe(1);
     });
 });

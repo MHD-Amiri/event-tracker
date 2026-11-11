@@ -1,4 +1,5 @@
 import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
 import { RedisService } from './redis.service';
 
 const mockRedisClient = {
@@ -6,6 +7,7 @@ const mockRedisClient = {
     set: jest.fn(),
     del: jest.fn(),
     disconnect: jest.fn(),
+    connect: jest.fn(),
     on: jest.fn(),
 };
 
@@ -39,10 +41,13 @@ describe('RedisService', () => {
         mockRedisClient.set.mockResolvedValue('OK');
         mockRedisClient.del.mockResolvedValue(1);
         mockRedisClient.disconnect.mockReturnValue(undefined);
+        mockRedisClient.connect.mockResolvedValue(undefined);
         mockRedisClient.on.mockReturnValue(mockRedisClient);
         jest.spyOn(console, 'warn').mockImplementation(() => undefined);
         jest.spyOn(console, 'log').mockImplementation(() => undefined);
         jest.spyOn(console, 'error').mockImplementation(() => undefined);
+        jest.spyOn(Logger.prototype, 'warn').mockImplementation(() => undefined);
+        jest.spyOn(Logger.prototype, 'error').mockImplementation(() => undefined);
         service = createService();
     });
 
@@ -142,6 +147,34 @@ describe('RedisService', () => {
         service.onModuleDestroy();
 
         expect(mockRedisClient.disconnect).toHaveBeenCalledTimes(1);
+    });
+
+    it('warns when Redis host settings are missing and includes the target in connection errors', () => {
+        const warning = jest.spyOn(Logger.prototype, 'warn');
+        const errorLog = jest.spyOn(Logger.prototype, 'error');
+        const fallbackService = createService();
+        const redisErrorHandler = [...mockRedisClient.on.mock.calls]
+            .reverse()
+            .find(([event]) => event === 'error')?.[1] as ((error: Error) => void) | undefined;
+
+        expect(warning).toHaveBeenCalledWith(expect.stringContaining('REDIS_HOST'));
+        expect(redisErrorHandler).toBeDefined();
+        redisErrorHandler?.(new Error('ECONNREFUSED'));
+
+        expect(errorLog).toHaveBeenCalledWith(
+            expect.stringContaining('Redis connection to localhost:6379 failed: ECONNREFUSED'),
+        );
+        fallbackService.onModuleDestroy();
+    });
+
+    it('fails module startup with the target when Redis cannot become ready', async () => {
+        mockRedisClient.connect.mockRejectedValueOnce(new Error('ECONNREFUSED'));
+        const config = { get: jest.fn((_key: string, defaultValue?: unknown) => defaultValue) } as unknown as ConfigService;
+        const unavailableService = new RedisService(config);
+
+        await expect(unavailableService.onModuleInit())
+            .rejects.toThrow('Redis startup check failed for localhost:6379: ECONNREFUSED');
+        expect(mockRedisClient.disconnect).toHaveBeenCalled();
     });
 
     it('surfaces invalid cached JSON and Redis command failures', async () => {

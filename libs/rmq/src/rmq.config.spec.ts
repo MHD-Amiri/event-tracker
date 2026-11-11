@@ -31,7 +31,11 @@ describe('RabbitMQ configuration', () => {
         });
 
         it('uses the default broker URL when neither variable is configured', () => {
+            const warning = jest.spyOn(console, 'warn').mockImplementation(() => undefined);
+
             expect(brokerUrl(config())).toBe(DEFAULT_BROKER_URL);
+            expect(warning).toHaveBeenCalledWith(expect.stringContaining('RABBITMQ_URL is not set'));
+            expect(warning).toHaveBeenCalledWith(expect.stringContaining('copy .sample.env to .env'));
         });
 
         it('uses the deprecated URL only as a fallback and warns once', () => {
@@ -96,6 +100,7 @@ describe('RabbitMQ configuration', () => {
                 queueOptions: { durable: true },
                 noAck: false,
                 prefetchCount: DEFAULT_PREFETCH_COUNT,
+                maxConnectionAttempts: 5,
             });
         });
 
@@ -109,6 +114,7 @@ describe('RabbitMQ configuration', () => {
                 queueOptions: { durable: true },
                 noAck: false,
                 prefetchCount: 125,
+                maxConnectionAttempts: 5,
             });
         });
 
@@ -127,6 +133,7 @@ describe('RabbitMQ configuration', () => {
                     queueOptions: { durable: true },
                     noAck: false,
                     prefetchCount: DEFAULT_PREFETCH_COUNT,
+                    maxConnectionAttempts: 5,
                 },
             });
         });

@@ -1,5 +1,5 @@
 import { NestFactory } from '@nestjs/core';
-import { ValidationPipe } from '@nestjs/common';
+import { Logger, ValidationPipe } from '@nestjs/common';
 import { AppModule } from './app.module';
 import { consumerMicroservice, queueNames, type ConfigReader } from '@app/rmq';
 
@@ -53,6 +53,39 @@ export async function bootstrap(role = process.env.PROCESS_ROLE || 'both') {
     }
 }
 
+export async function runBootstrap(): Promise<boolean> {
+    try {
+        await bootstrap();
+        return true;
+    } catch (error) {
+        const detail = describeStartupError(error);
+        Logger.error(`Process startup failed: ${detail}`, undefined, 'ProcessBootstrap');
+        process.exitCode = 1;
+        return false;
+    }
+}
+
+function describeStartupError(error: unknown, seen = new WeakSet<object>()): string {
+    if (error instanceof Error) {
+        if (seen.has(error)) return '[circular error cause]';
+        seen.add(error);
+        const cause = (error as Error & { cause?: unknown }).cause;
+        return `${error.name}: ${error.message}${cause === undefined ? '' : `; cause=${describeStartupError(cause, seen)}`}`;
+    }
+    if (typeof error === 'object' && error !== null) {
+        if (seen.has(error)) return '[circular error detail]';
+        seen.add(error);
+        try {
+            return JSON.stringify(error) ?? String(error);
+        } catch {
+            return '[unserializable error details]';
+        }
+    }
+    return String(error);
+}
+
 if (require.main === module) {
-    void bootstrap();
+    void runBootstrap().then((started) => {
+        if (!started) process.exit(1);
+    });
 }

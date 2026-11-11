@@ -8,6 +8,7 @@ export const DEFAULT_BROKER_URL = 'amqp://guest:guest@localhost:5672';
 export const DEFAULT_INGESTION_QUEUE = 'events_queue';
 export const DEFAULT_EVALUATION_QUEUE = 'events_evaluation_queue';
 export const DEFAULT_PREFETCH_COUNT = 500;
+export const DEFAULT_MAX_CONNECTION_ATTEMPTS = 5;
 
 /**
  * The slice of `ConfigService` this module needs. Declared structurally so the
@@ -19,6 +20,7 @@ export interface ConfigReader {
 }
 
 let warnedAboutDeprecatedVar = false;
+let warnedAboutDefaultBrokerUrl = false;
 
 /**
  * Resolves the broker URL. Precedence lives here and nowhere else, so the
@@ -38,6 +40,15 @@ export function brokerUrl(env: ConfigReader): string {
             );
         }
         return uri;
+    }
+
+    if (!warnedAboutDefaultBrokerUrl) {
+        warnedAboutDefaultBrokerUrl = true;
+        console.warn(
+            `⚠️ ${BROKER_URL_VAR} is not set; using the built-in local broker default. ` +
+            `For this repository's Docker Compose broker, copy .sample.env to .env before starting the apps, ` +
+            `or set ${BROKER_URL_VAR} to the broker's credentials.`,
+        );
     }
 
     return DEFAULT_BROKER_URL;
@@ -83,6 +94,10 @@ export function publisherClientConfig(
 export function consumerOptions(queue: string, env: ConfigReader): RmqOptions['options'] {
     const rawPrefetch = env.get<string>('RMQ_PREFETCH_COUNT');
     const prefetchCount = Number(rawPrefetch) || DEFAULT_PREFETCH_COUNT;
+    const rawAttempts = Number(env.get<string>('RMQ_MAX_CONNECTION_ATTEMPTS'));
+    const maxConnectionAttempts = Number.isInteger(rawAttempts) && rawAttempts > 0
+        ? rawAttempts
+        : DEFAULT_MAX_CONNECTION_ATTEMPTS;
 
     return {
         urls: [brokerUrl(env)],
@@ -90,6 +105,7 @@ export function consumerOptions(queue: string, env: ConfigReader): RmqOptions['o
         queueOptions: { durable: true },
         noAck: false,
         prefetchCount,
+        maxConnectionAttempts,
     };
 }
 

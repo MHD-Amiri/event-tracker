@@ -1,4 +1,4 @@
-import { Injectable, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import Redis from 'ioredis';
 
@@ -6,6 +6,7 @@ const RULES_CACHE_KEY = 'active_rules';
 
 @Injectable()
 export class RedisService implements OnModuleInit, OnModuleDestroy {
+    private readonly logger = new Logger(RedisService.name);
     private client: Redis;
     private readonly RULES_CACHE_KEY = RULES_CACHE_KEY;
 
@@ -29,18 +30,46 @@ export class RedisService implements OnModuleInit, OnModuleDestroy {
         return parsed;
     }
 
-    onModuleInit() {
-        const host = this.configService.get<string>('REDIS_HOST', 'localhost');
-        const port = this.configService.get<number>('REDIS_PORT', 6379);
+    async onModuleInit(): Promise<void> {
+        const configuredHost = this.configService.get<string>('REDIS_HOST');
+        const configuredPort = this.configService.get<string | number>('REDIS_PORT');
+        const missingSettings = [
+            !configuredHost && 'REDIS_HOST',
+            !configuredPort && 'REDIS_PORT',
+        ].filter(Boolean);
+        if (missingSettings.length) {
+            this.logger.warn(
+                `${missingSettings.join(' and ')} not set; using localhost:6379 defaults where missing.`,
+            );
+        }
+
+        const host = configuredHost || 'localhost';
+        const parsedPort = Number(configuredPort ?? 6379);
+        const port = Number.isInteger(parsedPort) && parsedPort > 0 && parsedPort <= 65535
+            ? parsedPort
+            : 6379;
+        if (configuredPort && port !== parsedPort) {
+            this.logger.warn(`Invalid REDIS_PORT "${configuredPort}"; using default port 6379.`);
+        }
 
         this.client = new Redis({
             host,
             port,
+            lazyConnect: true,
             retryStrategy: (times) => Math.min(times * 100, 3000),
         });
 
-        this.client.on('connect', () => console.log('✅ Connected to Redis'));
-        this.client.on('error', (err) => console.error('❌ Redis Error:', err.message));
+        this.client.on('connect', () => this.logger.log(`Connected to Redis at ${host}:${port}.`));
+        this.client.on('error', (err) => {
+            this.logger.error(`Redis connection to ${host}:${port} failed: ${err.message}`);
+        });
+        try {
+            await this.client.connect();
+        } catch (error) {
+            this.client.disconnect();
+            const detail = error instanceof Error ? error.message : String(error);
+            throw new Error(`Redis startup check failed for ${host}:${port}: ${detail}`);
+        }
     }
 
     onModuleDestroy() {
